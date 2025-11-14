@@ -95,10 +95,54 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get("/api/proposals", async (req, res) => {
     try {
       const proposals = await storage.getProposals();
-      
+      const params = await storage.getSystemParams();
+      const lockMultiplierParam = params.find(p => p.key === "lockMultiplier");
+      const burnMultiplierParam = params.find(p => p.key === "burnMultiplier");
+      const votingDurationParam = params.find(p => p.key === "votingDuration");
+      const lockMultiplier = lockMultiplierParam ? Number(lockMultiplierParam.value) : 10;
+      const burnMultiplier = burnMultiplierParam ? Number(burnMultiplierParam.value) : 50;
+      const votingDuration = votingDurationParam ? Number(votingDurationParam.value) : 14;
+
+      const proposalIds = proposals.map(p => p.id);
+      const partnerSupportsMap = await storage.getPartnerSupportsForProposals(proposalIds);
+
+      const now = new Date();
+
       const enriched = await Promise.all(
         proposals.map(async (p) => {
-          const partners = await storage.getPartnerSupports(p.id);
+          const partners = partnerSupportsMap.get(p.id) || [];
+          
+          if (p.status === "publicized" && p.fundingDeadline) {
+            const deadline = new Date(p.fundingDeadline);
+            
+            if (now >= deadline) {
+              const stakeMultiplier = p.stakeType === "burn" ? burnMultiplier : lockMultiplier;
+              const baseFunding = Number(p.stakeAmount || 0) * stakeMultiplier;
+              
+              const partnerFunding = partners.reduce((sum, ps) => {
+                const psMultiplier = ps.actionType === "burn" ? burnMultiplier : lockMultiplier;
+                return sum + (Number(ps.wanAmount) * psMultiplier);
+              }, 0);
+              
+              const effectiveFunding = baseFunding + partnerFunding;
+              const requestedFunding = Number(p.fundingRequested || 0);
+              
+              if (effectiveFunding >= requestedFunding && p.status !== "active") {
+                const votingStartsAt = new Date();
+                const votingEndsAt = new Date();
+                votingEndsAt.setDate(votingEndsAt.getDate() + votingDuration);
+
+                await storage.updateProposalStatus(p.id, "active", votingStartsAt, votingEndsAt);
+                p.status = "active";
+                p.votingStartsAt = votingStartsAt;
+                p.votingEndsAt = votingEndsAt;
+              } else if (effectiveFunding < requestedFunding && p.status !== "closed") {
+                await storage.updateProposalStatus(p.id, "closed");
+                p.status = "closed";
+              }
+            }
+          }
+
           const totalPartnerStake = partners.reduce((sum, ps) => sum + Number(ps.wanAmount), 0).toString();
           return {
             ...p,
@@ -259,45 +303,28 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post("/api/proposals/:id/support", authMiddleware, async (req, res) => {
     try {
       if (req.user.role !== "partner" && req.user.role !== "admin") {
-        return res.status(403).json({ error: "Partner role required" });
+        return res.status(403).json({ error: "需要Partner角色" });
       }
 
       const proposal = await storage.getProposal(req.params.id);
       if (!proposal) {
-        return res.status(404).json({ error: "Proposal not found" });
+        return res.status(404).json({ error: "提案不存在" });
       }
 
       if (proposal.type !== "funding") {
-        return res.status(400).json({ error: "Only funding proposals can receive partner support" });
+        return res.status(400).json({ error: "只有资金申请提案可以接受Partner支持" });
       }
 
-      if (proposal.status !== "approved" && proposal.status !== "pending") {
-        return res.status(400).json({ error: "Proposal is not open for support" });
+      if (proposal.status !== "publicized") {
+        return res.status(400).json({ error: "只有已公示的提案可以接受Partner追加资金" });
       }
 
       if (proposal.creatorId === req.user.id) {
-        return res.status(400).json({ error: "Cannot support your own proposal" });
+        return res.status(400).json({ error: "不能支持自己的提案" });
       }
 
       if (!proposal.fundingRequested || !proposal.stakeAmount || !proposal.stakeType) {
-        return res.status(400).json({ error: "Proposal is missing required funding information" });
-      }
-
-      const multipliers: Record<string, number> = {
-        lock: 10,
-        burn: 50,
-      };
-      const multiplier = multipliers[proposal.stakeType] || 10;
-      const baseFunding = Number(proposal.stakeAmount) * multiplier;
-      const requestedFunding = Number(proposal.fundingRequested);
-
-      if (requestedFunding <= baseFunding) {
-        return res.status(400).json({ error: "This proposal does not require additional partner funding" });
-      }
-
-      const existing = await storage.getPartnerSupport(req.params.id, req.user.id);
-      if (existing) {
-        return res.status(400).json({ error: "You have already supported this proposal" });
+        return res.status(400).json({ error: "提案缺少必要的资金信息" });
       }
 
       const data = insertPartnerSupportSchema.parse({
@@ -306,13 +333,62 @@ export async function registerRoutes(app: Express): Promise<Server> {
         partnerId: req.user.id,
       });
 
+      if (!data.actionType || (data.actionType !== "lock" && data.actionType !== "burn")) {
+        return res.status(400).json({ error: "actionType必须是lock或burn" });
+      }
+
+      const existing = await storage.getPartnerSupport(req.params.id, req.user.id);
+      if (existing) {
+        return res.status(400).json({ error: "您已经支持过此提案" });
+      }
+
       if (Number(req.user.wanBalance) < Number(data.wanAmount)) {
-        return res.status(400).json({ error: "Insufficient WAN balance" });
+        return res.status(400).json({ error: "WAN余额不足" });
+      }
+
+      const params = await storage.getSystemParams();
+      const lockMultiplierParam = params.find(p => p.key === "lockMultiplier");
+      const burnMultiplierParam = params.find(p => p.key === "burnMultiplier");
+      const lockMultiplier = lockMultiplierParam ? Number(lockMultiplierParam.value) : 10;
+      const burnMultiplier = burnMultiplierParam ? Number(burnMultiplierParam.value) : 50;
+
+      const stakeMultiplier = proposal.stakeType === "burn" ? burnMultiplier : lockMultiplier;
+      const baseFunding = Number(proposal.stakeAmount) * stakeMultiplier;
+      const requestedFunding = Number(proposal.fundingRequested);
+
+      if (requestedFunding <= baseFunding) {
+        return res.status(400).json({ error: "此提案不需要额外的Partner资金支持" });
       }
 
       await storage.updateUserBalance(req.user.id, "0", `-${data.wanAmount}`);
 
       const support = await storage.createPartnerSupport(data);
+
+      const allSupports = await storage.getPartnerSupports(req.params.id);
+      const partnerFunding = allSupports.reduce((sum, ps) => {
+        const psMultiplier = ps.actionType === "burn" ? burnMultiplier : lockMultiplier;
+        return sum + (Number(ps.wanAmount) * psMultiplier);
+      }, 0);
+      
+      const effectiveFunding = baseFunding + partnerFunding;
+
+      if (effectiveFunding >= requestedFunding) {
+        const votingDurationParam = params.find(p => p.key === "votingDuration");
+        const votingDuration = votingDurationParam ? Number(votingDurationParam.value) : 14;
+
+        const votingStartsAt = new Date();
+        const votingEndsAt = new Date();
+        votingEndsAt.setDate(votingEndsAt.getDate() + votingDuration);
+
+        await storage.updateProposalStatus(req.params.id, "active", votingStartsAt, votingEndsAt);
+        
+        return res.json({ 
+          ...support, 
+          proposalUpdated: true,
+          newStatus: "active",
+          message: "资金已达标，提案已自动进入投票阶段"
+        });
+      }
 
       return res.json(support);
     } catch (error: any) {
@@ -374,6 +450,49 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       return res.json({ success: true });
+    } catch (error: any) {
+      return res.status(400).json({ error: error.message });
+    }
+  });
+
+  app.post("/api/admin/proposals/:id/publicize", authMiddleware, adminMiddleware, async (req, res) => {
+    try {
+      const proposal = await storage.getProposal(req.params.id);
+      if (!proposal) {
+        return res.status(404).json({ error: "Proposal not found" });
+      }
+
+      if (proposal.status !== "pending") {
+        return res.status(400).json({ error: "只有待审核的提案可以公示" });
+      }
+
+      if (proposal.type !== "funding") {
+        return res.status(400).json({ error: "只有资金申请提案可以公示" });
+      }
+
+      if (!proposal.fundingRequested || !proposal.stakeAmount || !proposal.stakeType) {
+        return res.status(400).json({ error: "提案缺少必要的资金信息" });
+      }
+
+      const multipliers: Record<string, number> = {
+        lock: 10,
+        burn: 50,
+      };
+      const multiplier = multipliers[proposal.stakeType] || 10;
+      const baseFunding = Number(proposal.stakeAmount) * multiplier;
+      const requestedFunding = Number(proposal.fundingRequested);
+
+      if (requestedFunding <= baseFunding) {
+        return res.status(400).json({ error: "质押金和申请金额已匹配，无需公示" });
+      }
+
+      const publicizedAt = new Date();
+      const fundingDeadline = new Date();
+      fundingDeadline.setDate(fundingDeadline.getDate() + 14);
+
+      await storage.publicizeProposal(req.params.id, publicizedAt, fundingDeadline);
+
+      return res.json({ success: true, publicizedAt, fundingDeadline });
     } catch (error: any) {
       return res.status(400).json({ error: error.message });
     }

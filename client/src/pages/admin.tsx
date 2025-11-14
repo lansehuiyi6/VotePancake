@@ -9,7 +9,7 @@ import { StatusBadge } from "@/components/status-badge";
 import { Separator } from "@/components/ui/separator";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-import { CheckCircle, XCircle, DollarSign, User, Settings } from "lucide-react";
+import { CheckCircle, XCircle, DollarSign, User, Settings, AlertCircle } from "lucide-react";
 import { Link } from "wouter";
 
 export default function AdminPanel() {
@@ -49,14 +49,33 @@ export default function AdminPanel() {
     mutationFn: (proposalId: string) => apiRequest("POST", `/api/admin/proposals/${proposalId}/reject`, {}),
     onSuccess: () => {
       toast({
-        title: "Proposal rejected",
-        description: "The proposal has been rejected.",
+        title: "提案已拒绝",
+        description: "该提案已被拒绝。",
       });
       queryClient.invalidateQueries({ queryKey: ["/api/admin/pending"] });
     },
     onError: (error: any) => {
       toast({
-        title: "Rejection failed",
+        title: "拒绝失败",
+        description: error.message,
+        variant: "destructive",
+      });
+    },
+  });
+
+  const publicizeMutation = useMutation({
+    mutationFn: (proposalId: string) => apiRequest("POST", `/api/admin/proposals/${proposalId}/publicize`, {}),
+    onSuccess: () => {
+      toast({
+        title: "提案已公示",
+        description: "该提案已公示，Partner可以追加资金。",
+      });
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/pending"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/proposals"] });
+    },
+    onError: (error: any) => {
+      toast({
+        title: "公示失败",
         description: error.message,
         variant: "destructive",
       });
@@ -152,39 +171,89 @@ export default function AdminPanel() {
                     <CardContent className="space-y-4">
                       <p className="text-muted-foreground line-clamp-3">{proposal.description}</p>
 
-                      {proposal.type === "funding" && (
-                        <div className="grid sm:grid-cols-2 gap-4 p-4 rounded-lg bg-muted/50">
-                          <div>
-                            <div className="text-xs text-muted-foreground mb-1">Requesting</div>
-                            <div className="text-xl font-bold font-mono text-primary">
-                              {Number(proposal.fundingAmount).toLocaleString()} WAN
+                      {proposal.type === "funding" && (() => {
+                        const multipliers = { lock: 10, burn: 50 };
+                        const multiplier = multipliers[proposal.stakeType as keyof typeof multipliers] || 10;
+                        const baseFunding = Number(proposal.stakeAmount || 0) * multiplier;
+                        const requestedFunding = Number(proposal.fundingRequested || 0);
+                        const needsPartnerFunding = requestedFunding > baseFunding;
+                        const fundingGap = requestedFunding - baseFunding;
+
+                        return (
+                          <div className="space-y-3">
+                            <div className="grid sm:grid-cols-3 gap-4 p-4 rounded-lg bg-muted/50">
+                              <div>
+                                <div className="text-xs text-muted-foreground mb-1">申请金额</div>
+                                <div className="text-xl font-bold font-mono text-primary">
+                                  {requestedFunding.toLocaleString()} WAN
+                                </div>
+                              </div>
+                              <div>
+                                <div className="text-xs text-muted-foreground mb-1">提案者质押</div>
+                                <div className="text-lg font-bold font-mono">
+                                  {Number(proposal.stakeAmount).toLocaleString()} WAN ({proposal.stakeType})
+                                </div>
+                              </div>
+                              <div>
+                                <div className="text-xs text-muted-foreground mb-1">可获资金</div>
+                                <div className="text-lg font-bold font-mono">
+                                  {baseFunding.toLocaleString()} WAN
+                                </div>
+                              </div>
                             </div>
+                            {needsPartnerFunding && (
+                              <div className="p-3 rounded-lg bg-orange-500/10 border border-orange-500/20">
+                                <div className="text-sm font-medium text-orange-600 dark:text-orange-400">
+                                  ⚠️ 资金缺口：{fundingGap.toLocaleString()} WAN - 需要Partner追加资金
+                                </div>
+                              </div>
+                            )}
                           </div>
-                          <div>
-                            <div className="text-xs text-muted-foreground mb-1">Proposer Stake</div>
-                            <div className="text-lg font-bold font-mono">
-                              {Number(proposal.stakeAmount).toLocaleString()} WAN ({proposal.stakeType})
-                            </div>
-                          </div>
-                        </div>
-                      )}
+                        );
+                      })()}
 
                       <div className="flex gap-2 flex-wrap">
                         <Link href={`/proposals/${proposal.id}`}>
                           <Button variant="outline" data-testid={`button-view-${proposal.id}`}>
-                            View Full Details
+                            查看详情
                           </Button>
                         </Link>
-                        <Button
-                          variant="default"
-                          onClick={() => approveMutation.mutate(proposal.id)}
-                          disabled={approveMutation.isPending}
-                          className="gap-2"
-                          data-testid={`button-approve-${proposal.id}`}
-                        >
-                          <CheckCircle className="h-4 w-4" />
-                          Approve & Publish
-                        </Button>
+                        {(() => {
+                          if (proposal.type === "funding") {
+                            const multipliers = { lock: 10, burn: 50 };
+                            const multiplier = multipliers[proposal.stakeType as keyof typeof multipliers] || 10;
+                            const baseFunding = Number(proposal.stakeAmount || 0) * multiplier;
+                            const requestedFunding = Number(proposal.fundingRequested || 0);
+                            const needsPartnerFunding = requestedFunding > baseFunding;
+
+                            if (needsPartnerFunding) {
+                              return (
+                                <Button
+                                  variant="default"
+                                  onClick={() => publicizeMutation.mutate(proposal.id)}
+                                  disabled={publicizeMutation.isPending}
+                                  className="gap-2"
+                                  data-testid={`button-publicize-${proposal.id}`}
+                                >
+                                  <AlertCircle className="h-4 w-4" />
+                                  公示提案
+                                </Button>
+                              );
+                            }
+                          }
+                          return (
+                            <Button
+                              variant="default"
+                              onClick={() => approveMutation.mutate(proposal.id)}
+                              disabled={approveMutation.isPending}
+                              className="gap-2"
+                              data-testid={`button-approve-${proposal.id}`}
+                            >
+                              <CheckCircle className="h-4 w-4" />
+                              批准并发布
+                            </Button>
+                          );
+                        })()}
                         <Button
                           variant="destructive"
                           onClick={() => rejectMutation.mutate(proposal.id)}
@@ -193,7 +262,7 @@ export default function AdminPanel() {
                           data-testid={`button-reject-${proposal.id}`}
                         >
                           <XCircle className="h-4 w-4" />
-                          Reject
+                          拒绝
                         </Button>
                       </div>
                     </CardContent>

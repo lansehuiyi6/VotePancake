@@ -16,7 +16,7 @@ import {
   type InsertSystemParam,
 } from "@shared/schema";
 import { db } from "./db";
-import { eq, and, desc } from "drizzle-orm";
+import { eq, and, desc, inArray } from "drizzle-orm";
 
 export interface IStorage {
   getUser(id: string): Promise<User | undefined>;
@@ -30,6 +30,7 @@ export interface IStorage {
   getPendingProposals(): Promise<any[]>;
   createProposal(proposal: InsertProposal): Promise<Proposal>;
   updateProposalStatus(id: string, status: string, votingStartsAt?: Date, votingEndsAt?: Date): Promise<void>;
+  publicizeProposal(id: string, publicizedAt: Date, fundingDeadline: Date): Promise<void>;
   updateProposalVotes(id: string, votesFor: string, votesAgainst: string): Promise<void>;
 
   getVotes(proposalId: string): Promise<any[]>;
@@ -38,6 +39,7 @@ export interface IStorage {
   updateVoteProcessed(id: string, processed: boolean): Promise<void>;
 
   getPartnerSupports(proposalId: string): Promise<any[]>;
+  getPartnerSupportsForProposals(proposalIds: string[]): Promise<Map<string, any[]>>;
   getPartnerSupportsByPartner(partnerId: string): Promise<any[]>;
   getPartnerSupport(proposalId: string, partnerId: string): Promise<PartnerSupport | undefined>;
   createPartnerSupport(support: InsertPartnerSupport): Promise<PartnerSupport>;
@@ -135,6 +137,18 @@ export class DatabaseStorage implements IStorage {
       .where(eq(proposals.id, id));
   }
 
+  async publicizeProposal(id: string, publicizedAt: Date, fundingDeadline: Date): Promise<void> {
+    await db
+      .update(proposals)
+      .set({
+        status: "publicized",
+        publicizedAt,
+        fundingDeadline,
+        updatedAt: new Date(),
+      })
+      .where(eq(proposals.id, id));
+  }
+
   async updateProposalVotes(id: string, votesFor: string, votesAgainst: string): Promise<void> {
     await db
       .update(proposals)
@@ -175,6 +189,29 @@ export class DatabaseStorage implements IStorage {
         partner: { columns: { username: true } },
       },
     });
+  }
+
+  async getPartnerSupportsForProposals(proposalIds: string[]): Promise<Map<string, any[]>> {
+    if (proposalIds.length === 0) {
+      return new Map();
+    }
+
+    const supports = await db.query.partnerSupports.findMany({
+      where: inArray(partnerSupports.proposalId, proposalIds),
+      with: {
+        partner: { columns: { username: true } },
+      },
+    });
+
+    const grouped = new Map<string, any[]>();
+    for (const support of supports) {
+      if (!grouped.has(support.proposalId)) {
+        grouped.set(support.proposalId, []);
+      }
+      grouped.get(support.proposalId)!.push(support);
+    }
+
+    return grouped;
   }
 
   async getPartnerSupportsByPartner(partnerId: string): Promise<any[]> {

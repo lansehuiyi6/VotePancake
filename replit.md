@@ -87,3 +87,21 @@ The project runs a full-stack server on port 5000 that serves both the API and t
   - 显示资金缺口（fundingGap）帮助 Partner 了解需要追加的金额
 
 - **管理员用户**: 通过 seed 脚本确保默认存在 admin/admin123 管理员账户
+
+- **提案公示功能**: 完整的提案融资工作流
+  - 添加 "publicized" 状态，用于管理员公示资金不足的提案
+  - 引入 fundingDeadline 字段，标记 2 周募资截止日期
+  - Partner 可以对已公示提案追加资金支持（仅限 publicized 状态）
+  - 自动状态转换：截止日期后，达标进入 active 投票，否则 closed
+  - 重复支持时更新余额而非报错，达标立即转为 active
+
+- **乘数计算修复**: 
+  - 所有资金计算统一从系统参数读取 lockMultiplier/burnMultiplier
+  - 确保前后端一致性，允许管理员动态配置
+  - 修复前端/后端各处硬编码的乘数值
+
+- **性能优化**: 
+  - 实现批量查询方法 `getPartnerSupportsForProposals()`
+  - GET /api/proposals 从 N+1 查询优化为仅 2 次数据库查询
+  - 添加幂等性保护，避免并发请求重复更新状态
+  - 未来可考虑：在 partner_supports 表添加 (proposal_id, partner_id) 复合索引

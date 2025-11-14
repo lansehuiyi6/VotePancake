@@ -29,6 +29,8 @@ export const proposals = pgTable("proposals", {
   contactEmail: text("contact_email"),
   contactTelegram: text("contact_telegram"),
   contactDiscord: text("contact_discord"),
+  publicizedAt: timestamp("publicized_at"),
+  fundingDeadline: timestamp("funding_deadline"),
   votingStartsAt: timestamp("voting_starts_at"),
   votingEndsAt: timestamp("voting_ends_at"),
   votesFor: decimal("votes_for", { precision: 20, scale: 2 }).notNull().default("0"),
