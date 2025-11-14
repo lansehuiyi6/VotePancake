@@ -11,6 +11,7 @@ import Login from "@/pages/login";
 import Register from "@/pages/register";
 import CreateProposal from "@/pages/create-proposal";
 import ProposalDetail from "@/pages/proposal-detail";
+import MyProposals from "@/pages/my-proposals";
 import AdminPanel from "@/pages/admin";
 import PartnerDashboard from "@/pages/partner-dashboard";
 import NotFound from "@/pages/not-found";
@@ -29,6 +30,7 @@ function Router() {
         <Route path="/register" component={Register} />
         <Route path="/proposals/create" component={CreateProposal} />
         <Route path="/proposals/:id" component={ProposalDetail} />
+        <Route path="/my-proposals" component={MyProposals} />
         <Route path="/admin" component={AdminPanel} />
         <Route path="/partner" component={PartnerDashboard} />
         <Route component={NotFound} />

@@ -1,4 +1,4 @@
-import { Link } from "wouter";
+import { Link, useLocation } from "wouter";
 import { ThemeToggle } from "./theme-toggle";
 import { Button } from "./ui/button";
 import { Badge } from "./ui/badge";
@@ -11,6 +11,9 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { useMutation } from "@tanstack/react-query";
+import { queryClient, apiRequest } from "@/lib/queryClient";
+import { useToast } from "@/hooks/use-toast";
 
 interface HeaderProps {
   currentUser?: {
@@ -23,6 +26,32 @@ interface HeaderProps {
 }
 
 export function Header({ currentUser }: HeaderProps) {
+  const [, setLocation] = useLocation();
+  const { toast } = useToast();
+
+  const logoutMutation = useMutation({
+    mutationFn: () => apiRequest("POST", "/api/auth/logout", {}),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/auth/me"] });
+      toast({
+        title: "Logged out",
+        description: "You have been successfully logged out.",
+      });
+      setLocation("/");
+    },
+    onError: () => {
+      toast({
+        title: "Error",
+        description: "Failed to logout. Please try again.",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const handleLogout = () => {
+    logoutMutation.mutate();
+  };
+
   const getRoleBadgeVariant = (role: string) => {
     switch (role) {
       case "admin":
@@ -105,7 +134,7 @@ export function Header({ currentUser }: HeaderProps) {
                     <DropdownMenuItem data-testid="link-my-proposals">My Proposals</DropdownMenuItem>
                   </Link>
                   <DropdownMenuSeparator />
-                  <DropdownMenuItem data-testid="button-logout">
+                  <DropdownMenuItem onClick={handleLogout} data-testid="button-logout">
                     Logout
                   </DropdownMenuItem>
                 </DropdownMenuContent>
