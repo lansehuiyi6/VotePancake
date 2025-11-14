@@ -22,17 +22,17 @@ export default function PartnerDashboard() {
     queryKey: ["/api/partner/available-proposals"],
   });
 
-  if (!currentUser || (currentUser.role !== "partner" && currentUser.role !== "admin")) {
+  if (!currentUser) {
     return (
       <div className="min-h-screen flex items-center justify-center px-4">
         <Card className="max-w-md">
           <CardHeader>
-            <CardTitle>Access Denied</CardTitle>
-            <CardDescription>You must be a partner to access this page</CardDescription>
+            <CardTitle>登录required</CardTitle>
+            <CardDescription>请先登录以查看 Partner 支持功能</CardDescription>
           </CardHeader>
           <CardContent>
-            <Link href="/">
-              <Button>Back to Home</Button>
+            <Link href="/login">
+              <Button>前往登录</Button>
             </Link>
           </CardContent>
         </Card>
@@ -171,11 +171,19 @@ export default function PartnerDashboard() {
                               </div>
                             </div>
                             <div className="flex flex-col gap-2 flex-shrink-0">
-                              <Link href={`/proposals/${proposal.id}`}>
-                                <Button size="sm" data-testid={`button-view-${proposal.id}`}>
-                                  {proposal.alreadySupported ? "View Details" : "Support Proposal"}
-                                </Button>
-                              </Link>
+                              {proposal.alreadySupported ? (
+                                <Link href={`/proposals/${proposal.id}`}>
+                                  <Button size="sm" variant="outline" data-testid={`button-view-${proposal.id}`}>
+                                    查看详情
+                                  </Button>
+                                </Link>
+                              ) : (
+                                <Link href={`/proposals/${proposal.id}/support`}>
+                                  <Button size="sm" data-testid={`button-support-${proposal.id}`}>
+                                    提供支持
+                                  </Button>
+                                </Link>
+                              )}
                             </div>
                           </div>
                         </CardContent>

@@ -57,6 +57,9 @@ export const partnerSupports = pgTable("partner_supports", {
   partnerId: varchar("partner_id").notNull().references(() => users.id),
   wanAmount: decimal("wan_amount", { precision: 20, scale: 2 }).notNull(),
   actionType: text("action_type").notNull(),
+  contactEmail: text("contact_email"),
+  contactTelegram: text("contact_telegram"),
+  contactDiscord: text("contact_discord"),
   processed: boolean("processed").notNull().default(false),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });

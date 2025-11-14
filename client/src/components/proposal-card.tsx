@@ -161,6 +161,15 @@ export function ProposalCard({ proposal, currentUserId, onCancel, compact = fals
           </Link>
         )}
 
+        {proposal.status === "approved" && proposal.type === "funding" && currentUserId && (
+          <Link href={`/proposals/${proposal.id}/support`}>
+            <Button variant="default" data-testid={`button-support-${proposal.id}`}>
+              <Users className="h-4 w-4 mr-2" />
+              Support
+            </Button>
+          </Link>
+        )}
+
         {canCancel && onCancel && (
           <Button
             variant="destructive"

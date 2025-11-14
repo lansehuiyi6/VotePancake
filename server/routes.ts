@@ -26,6 +26,17 @@ const authMiddleware = async (req: any, res: any, next: any) => {
   next();
 };
 
+const optionalAuthMiddleware = async (req: any, res: any, next: any) => {
+  const userId = (req.session as any)?.userId;
+  if (userId) {
+    const user = await storage.getUser(userId);
+    if (user) {
+      req.user = user;
+    }
+  }
+  next();
+};
+
 const adminMiddleware = async (req: any, res: any, next: any) => {
   if (!req.user || req.user.role !== "admin") {
     return res.status(403).json({ error: "Admin access required" });
@@ -76,7 +87,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.get("/api/auth/me", authMiddleware, async (req, res) => {
+  app.get("/api/auth/me", optionalAuthMiddleware, async (req, res) => {
+    if (!req.user) {
+      return res.json(null);
+    }
     return res.json({
       id: req.user.id,
       username: req.user.username,
@@ -92,7 +106,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     });
   });
 
-  app.get("/api/proposals", async (req, res) => {
+  app.get("/api/proposals", optionalAuthMiddleware, async (req, res) => {
     try {
       const proposals = await storage.getProposals();
       const params = await storage.getSystemParams();
@@ -152,7 +166,23 @@ export async function registerRoutes(app: Express): Promise<Server> {
         })
       );
 
-      return res.json(enriched);
+      const filtered = enriched.filter(p => {
+        if (p.status !== "pending") {
+          return true;
+        }
+        
+        if (!req.user) {
+          return false;
+        }
+        
+        if (req.user.role === "admin") {
+          return true;
+        }
+        
+        return p.creatorId === req.user.id;
+      });
+
+      return res.json(filtered);
     } catch (error: any) {
       return res.status(500).json({ error: error.message });
     }
@@ -302,10 +332,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.post("/api/proposals/:id/support", authMiddleware, async (req, res) => {
     try {
-      if (req.user.role !== "partner" && req.user.role !== "admin") {
-        return res.status(403).json({ error: "需要Partner角色" });
-      }
-
       const proposal = await storage.getProposal(req.params.id);
       if (!proposal) {
         return res.status(404).json({ error: "提案不存在" });
@@ -335,6 +361,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       if (!data.actionType || (data.actionType !== "lock" && data.actionType !== "burn")) {
         return res.status(400).json({ error: "actionType必须是lock或burn" });
+      }
+
+      if (!data.contactEmail && !data.contactTelegram && !data.contactDiscord) {
+        return res.status(400).json({ error: "请至少填写一个联系方式（邮箱、Telegram 或 Discord）" });
       }
 
       const existing = await storage.getPartnerSupport(req.params.id, req.user.id);

@@ -92,6 +92,9 @@ export default function Home() {
               <Tabs value={statusFilter} onValueChange={setStatusFilter}>
                 <TabsList>
                   <TabsTrigger value="all" data-testid="filter-status-all">All</TabsTrigger>
+                  {currentUser?.role === "admin" && (
+                    <TabsTrigger value="pending" data-testid="filter-status-pending">未公示</TabsTrigger>
+                  )}
                   <TabsTrigger value="active" data-testid="filter-status-active">Vote Now</TabsTrigger>
                   <TabsTrigger value="approved" data-testid="filter-status-approved">Soon</TabsTrigger>
                   <TabsTrigger value="passed" data-testid="filter-status-passed">Passed</TabsTrigger>
