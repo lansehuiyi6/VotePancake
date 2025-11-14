@@ -27,45 +27,43 @@ export function ProposalCard({ proposal, currentUserId, onCancel, compact = fals
     return (
       <Card className="hover-elevate transition-all duration-200" data-testid={`card-proposal-${proposal.id}`}>
         <CardContent className="p-4">
-          <Link href={`/proposals/${proposal.id}`}>
-            <a className="block">
-              <div className="flex items-start justify-between gap-4">
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2 mb-2">
-                    <StatusBadge status={proposal.status} />
-                    {proposal.type === "funding" && (
-                      <Badge variant="secondary">
-                        <DollarSign className="h-3 w-3 mr-1" />
-                        Funding Request
-                      </Badge>
-                    )}
-                  </div>
-                  <h3 className="text-lg font-bold mb-1 truncate" data-testid={`text-proposal-title-${proposal.id}`}>
-                    {proposal.title}
-                  </h3>
-                  <p className="text-sm text-muted-foreground line-clamp-2">
-                    {proposal.description}
-                  </p>
-                  <div className="flex items-center gap-4 mt-2 text-xs text-muted-foreground">
-                    <div className="flex items-center gap-1">
-                      <User className="h-3 w-3" />
-                      {proposal.creator.username}
-                    </div>
-                    {proposal.partnerCount && proposal.partnerCount > 0 && (
-                      <div className="flex items-center gap-1">
-                        <Users className="h-3 w-3" />
-                        {proposal.partnerCount} partners
-                      </div>
-                    )}
-                  </div>
+          <Link href={`/proposals/${proposal.id}`} className="block">
+            <div className="flex items-start justify-between gap-4">
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2 mb-2">
+                  <StatusBadge status={proposal.status} />
+                  {proposal.type === "funding" && (
+                    <Badge variant="secondary">
+                      <DollarSign className="h-3 w-3 mr-1" />
+                      Funding Request
+                    </Badge>
+                  )}
                 </div>
-                {proposal.status === "active" && proposal.votingEndsAt && (
-                  <div className="flex-shrink-0">
-                    <CountdownTimer endDate={new Date(proposal.votingEndsAt)} />
+                <h3 className="text-lg font-bold mb-1 truncate" data-testid={`text-proposal-title-${proposal.id}`}>
+                  {proposal.title}
+                </h3>
+                <p className="text-sm text-muted-foreground line-clamp-2">
+                  {proposal.description}
+                </p>
+                <div className="flex items-center gap-4 mt-2 text-xs text-muted-foreground">
+                  <div className="flex items-center gap-1">
+                    <User className="h-3 w-3" />
+                    {proposal.creator.username}
                   </div>
-                )}
+                  {proposal.partnerCount && proposal.partnerCount > 0 && (
+                    <div className="flex items-center gap-1">
+                      <Users className="h-3 w-3" />
+                      {proposal.partnerCount} partners
+                    </div>
+                  )}
+                </div>
               </div>
-            </a>
+              {proposal.status === "active" && proposal.votingEndsAt && (
+                <div className="flex-shrink-0">
+                  <CountdownTimer endDate={new Date(proposal.votingEndsAt)} />
+                </div>
+              )}
+            </div>
           </Link>
         </CardContent>
       </Card>

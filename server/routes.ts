@@ -407,6 +407,41 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  app.get("/api/partner/available-proposals", authMiddleware, async (req, res) => {
+    try {
+      if (req.user.role !== "partner" && req.user.role !== "admin") {
+        return res.status(403).json({ error: "Partner role required" });
+      }
+
+      const allProposals = await storage.getProposals();
+      
+      const availableProposals = await Promise.all(
+        allProposals
+          .filter(p => 
+            p.type === "funding" && 
+            (p.status === "pending" || p.status === "approved" || p.status === "active") &&
+            p.creatorId !== req.user.id
+          )
+          .map(async (p) => {
+            const existing = await storage.getPartnerSupport(p.id, req.user.id);
+            const partners = await storage.getPartnerSupports(p.id);
+            const totalPartnerStake = partners.reduce((sum, ps) => sum + Number(ps.wanAmount), 0).toString();
+            
+            return {
+              ...p,
+              alreadySupported: !!existing,
+              partnerCount: partners.length,
+              totalPartnerStake,
+            };
+          })
+      );
+
+      return res.json(availableProposals);
+    } catch (error: any) {
+      return res.status(500).json({ error: error.message });
+    }
+  });
+
   const httpServer = createServer(app);
 
   return httpServer;

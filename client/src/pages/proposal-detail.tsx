@@ -174,10 +174,8 @@ export default function ProposalDetail() {
     <div className="min-h-screen bg-background py-12 px-4">
       <div className="max-w-6xl mx-auto">
         <div className="mb-6">
-          <Link href="/">
-            <a className="text-sm text-muted-foreground hover:text-foreground" data-testid="link-back">
-              ← Back to Proposals
-            </a>
+          <Link href="/" className="text-sm text-muted-foreground hover:text-foreground" data-testid="link-back">
+            ← Back to Proposals
           </Link>
         </div>
 
@@ -221,9 +219,9 @@ export default function ProposalDetail() {
                     <Separator />
                     <div>
                       <h3 className="font-semibold mb-4">Funding Details</h3>
-                      <div className="grid sm:grid-cols-2 gap-4">
+                      <div className="grid sm:grid-cols-2 gap-4 mb-4">
                         <div className="p-4 rounded-lg bg-card border border-card-border">
-                          <div className="text-sm text-muted-foreground mb-1">Requesting</div>
+                          <div className="text-sm text-muted-foreground mb-1">Funding Request</div>
                           <div className="text-2xl font-bold font-mono text-primary">
                             {Number(proposal.fundingAmount).toLocaleString()} WAN
                           </div>
@@ -238,6 +236,76 @@ export default function ProposalDetail() {
                           </div>
                         </div>
                       </div>
+                      
+                      {(() => {
+                        const params = { lockMultiplier: 10, burnMultiplier: 50 };
+                        const proposerMultiplier = proposal.stakeType === "lock" ? params.lockMultiplier : params.burnMultiplier;
+                        const baseLimit = Number(proposal.stakeAmount || 0) * proposerMultiplier;
+                        
+                        const partnerFundingPower = partners?.reduce((sum, p) => {
+                          const partnerMultiplier = p.actionType === "lock" ? params.lockMultiplier : params.burnMultiplier;
+                          return sum + (Number(p.wanAmount) * partnerMultiplier);
+                        }, 0) || 0;
+                        
+                        const totalAvailable = baseLimit + partnerFundingPower;
+                        const fundingRequest = Number(proposal.fundingAmount || 0);
+                        const isFunded = totalAvailable >= fundingRequest;
+                        
+                        const partnerSupportAmount = partners?.reduce((sum, p) => sum + Number(p.wanAmount), 0) || 0;
+                        
+                        return (
+                          <div className="p-4 rounded-lg bg-muted/50 border-2 border-primary/20">
+                            <h4 className="font-semibold text-sm mb-3 flex items-center gap-2">
+                              <DollarSign className="h-4 w-4" />
+                              Funding Analysis
+                            </h4>
+                            <div className="space-y-2 text-sm">
+                              <div className="flex justify-between items-center">
+                                <span className="text-muted-foreground">Base Limit (Proposer Stake × {proposerMultiplier})</span>
+                                <span className="font-mono font-semibold">{baseLimit.toLocaleString()} WAN</span>
+                              </div>
+                              {partners && partners.length > 0 && (
+                                <>
+                                  <div className="flex justify-between items-center text-green-600 dark:text-green-400">
+                                    <span>Partner Support Funding Power</span>
+                                    <span className="font-mono font-semibold">+{partnerFundingPower.toLocaleString()} WAN</span>
+                                  </div>
+                                  <div className="text-xs text-muted-foreground ml-4">
+                                    {partnerSupportAmount.toLocaleString()} WAN staked by {partners.length} partner{partners.length !== 1 ? 's' : ''} (lock ×10, burn ×50)
+                                  </div>
+                                  <Separator />
+                                  <div className="flex justify-between items-center font-semibold">
+                                    <span>Total Available Funding</span>
+                                    <span className="font-mono text-lg text-primary">{totalAvailable.toLocaleString()} WAN</span>
+                                  </div>
+                                </>
+                              )}
+                              {!partners || partners.length === 0 && (
+                                <div className="text-xs text-muted-foreground mt-2">
+                                  💡 Partner support can increase available funding beyond the base limit
+                                </div>
+                              )}
+                              {fundingRequest > 0 && (
+                                <div className={`mt-3 p-2 rounded ${isFunded ? 'bg-green-50 dark:bg-green-950/20 text-green-700 dark:text-green-400' : 'bg-amber-50 dark:bg-amber-950/20 text-amber-700 dark:text-amber-400'}`}>
+                                  <div className="flex items-center gap-2 text-xs font-semibold">
+                                    {isFunded ? (
+                                      <>
+                                        <span>✓ Fully Funded</span>
+                                        <span className="font-mono">({((totalAvailable / fundingRequest) * 100).toFixed(0)}%)</span>
+                                      </>
+                                    ) : (
+                                      <>
+                                        <span>⚠ Needs More Support</span>
+                                        <span className="font-mono">{((totalAvailable / fundingRequest) * 100).toFixed(0)}% funded</span>
+                                      </>
+                                    )}
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })()}
                     </div>
 
                     {partners && partners.length > 0 && (

@@ -380,7 +380,14 @@ export default function CreateProposal() {
                         <Alert>
                           <AlertCircle className="h-4 w-4" />
                           <AlertDescription>
-                            Maximum funding request: <span className="font-mono font-bold">{calculateMaxFunding().toLocaleString()} WAN</span>
+                            <div className="space-y-1">
+                              <div>
+                                <strong>Base funding limit from your stake:</strong> <span className="font-mono font-bold">{calculateMaxFunding().toLocaleString()} WAN</span>
+                              </div>
+                              <div className="text-xs text-muted-foreground">
+                                You can request more than this amount. Partner support can increase your available funding beyond the base limit.
+                              </div>
+                            </div>
                           </AlertDescription>
                         </Alert>
                       )}
@@ -396,14 +403,14 @@ export default function CreateProposal() {
                                 type="number"
                                 step="0.01"
                                 min="0"
-                                max={calculateMaxFunding()}
                                 placeholder="Enter requested amount"
                                 data-testid="input-funding-amount"
                                 {...field}
                               />
                             </FormControl>
-                            <FormDescription>
-                              Cannot exceed your maximum funding limit
+                            <FormDescription className="space-y-1">
+                              <span className="block">Base limit: {calculateMaxFunding().toLocaleString()} WAN (from your {stakeAmount} WAN stake × {stakeType === 'lock' ? lockMultiplier : burnMultiplier})</span>
+                              <span className="block text-xs">💡 Partner support allows you to request additional funding beyond your base stake limit</span>
                             </FormDescription>
                             <FormMessage />
                           </FormItem>
