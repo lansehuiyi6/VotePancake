@@ -134,6 +134,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
         status: "pending",
       });
 
+      const hasEmail = data.contactEmail && data.contactEmail.trim().length > 0;
+      const hasTelegram = data.contactTelegram && data.contactTelegram.trim().length > 0;
+      const hasDiscord = data.contactDiscord && data.contactDiscord.trim().length > 0;
+      
+      if (!hasEmail && !hasTelegram && !hasDiscord) {
+        return res.status(400).json({ error: "至少需要提供一种联系方式（邮箱、电报或Discord）" });
+      }
+
       const params = await storage.getSystemParams();
       const xpCostParam = params.find(p => p.key === "xpBurnCost");
       const xpCost = xpCostParam ? xpCostParam.value : "110000";
@@ -149,6 +157,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (data.type === "funding") {
         if (!data.stakeAmount || !data.stakeType) {
           return res.status(400).json({ error: "Funding proposals require stake amount and type" });
+        }
+
+        if (!data.fundingRequested) {
+          return res.status(400).json({ error: "Funding proposals require a funding request amount" });
         }
 
         if (Number(req.user.wanBalance) < Number(data.stakeAmount)) {
@@ -265,6 +277,22 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       if (proposal.creatorId === req.user.id) {
         return res.status(400).json({ error: "Cannot support your own proposal" });
+      }
+
+      if (!proposal.fundingRequested || !proposal.stakeAmount || !proposal.stakeType) {
+        return res.status(400).json({ error: "Proposal is missing required funding information" });
+      }
+
+      const multipliers: Record<string, number> = {
+        lock: 10,
+        burn: 50,
+      };
+      const multiplier = multipliers[proposal.stakeType] || 10;
+      const baseFunding = Number(proposal.stakeAmount) * multiplier;
+      const requestedFunding = Number(proposal.fundingRequested);
+
+      if (requestedFunding <= baseFunding) {
+        return res.status(400).json({ error: "This proposal does not require additional partner funding" });
       }
 
       const existing = await storage.getPartnerSupport(req.params.id, req.user.id);
@@ -417,21 +445,45 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       const availableProposals = await Promise.all(
         allProposals
-          .filter(p => 
-            p.type === "funding" && 
-            (p.status === "pending" || p.status === "approved" || p.status === "active") &&
-            p.creatorId !== req.user.id
-          )
+          .filter(p => {
+            if (p.type !== "funding") return false;
+            if (!(p.status === "pending" || p.status === "approved" || p.status === "active")) return false;
+            if (p.creatorId === req.user.id) return false;
+            
+            if (!p.fundingRequested || !p.stakeAmount || !p.stakeType) return false;
+            
+            const params = ["lock", "burn"];
+            const multipliers: Record<string, number> = {
+              lock: 10,
+              burn: 50,
+            };
+            const multiplier = multipliers[p.stakeType] || 10;
+            const baseFunding = Number(p.stakeAmount) * multiplier;
+            const requestedFunding = Number(p.fundingRequested);
+            
+            return requestedFunding > baseFunding;
+          })
           .map(async (p) => {
             const existing = await storage.getPartnerSupport(p.id, req.user.id);
             const partners = await storage.getPartnerSupports(p.id);
             const totalPartnerStake = partners.reduce((sum, ps) => sum + Number(ps.wanAmount), 0).toString();
+            
+            const multipliers: Record<string, number> = {
+              lock: 10,
+              burn: 50,
+            };
+            const multiplier = multipliers[p.stakeType || "lock"] || 10;
+            const baseFunding = Number(p.stakeAmount || 0) * multiplier;
+            const requestedFunding = Number(p.fundingRequested || 0);
+            const fundingGap = requestedFunding - baseFunding;
             
             return {
               ...p,
               alreadySupported: !!existing,
               partnerCount: partners.length,
               totalPartnerStake,
+              baseFunding: baseFunding.toString(),
+              fundingGap: fundingGap.toString(),
             };
           })
       );

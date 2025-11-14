@@ -21,9 +21,17 @@ const proposalSchema = z.object({
   title: z.string().min(10, "Title must be at least 10 characters"),
   description: z.string().min(50, "Description must be at least 50 characters"),
   type: z.enum(["funding", "parameter"]),
-  fundingAmount: z.string().optional(),
+  fundingRequested: z.string().optional(),
   stakeAmount: z.string().optional(),
   stakeType: z.enum(["lock", "burn"]).optional(),
+  contactEmail: z.string().email("请输入有效的邮箱地址").optional().or(z.literal("")),
+  contactTelegram: z.string().optional(),
+  contactDiscord: z.string().optional(),
+}).refine((data) => {
+  return data.contactEmail || data.contactTelegram || data.contactDiscord;
+}, {
+  message: "至少需要填写一个联系方式（邮箱、电报或Discord）",
+  path: ["contactEmail"],
 });
 
 type ProposalFormData = z.infer<typeof proposalSchema>;
@@ -83,14 +91,15 @@ export default function CreateProposal() {
   });
 
   const onSubmit = (data: ProposalFormData) => {
-    if (proposalType === "funding" && (!data.fundingAmount || !data.stakeAmount || !data.stakeType)) {
+    if (proposalType === "funding" && (!data.fundingRequested || !data.stakeAmount || !data.stakeType)) {
       toast({
         title: "Missing funding details",
-        description: "Please provide funding amount and stake details.",
+        description: "Please provide funding request amount and stake details.",
         variant: "destructive",
       });
       return;
     }
+    
     createProposalMutation.mutate(data);
   };
 
@@ -270,6 +279,60 @@ export default function CreateProposal() {
                       </FormItem>
                     )}
                   />
+
+                  <Separator className="my-6" />
+                  
+                  <div className="space-y-4">
+                    <div>
+                      <h3 className="font-semibold mb-2">联系方式</h3>
+                      <p className="text-sm text-muted-foreground mb-4">
+                        请至少提供一种联系方式，以便社区与您沟通
+                      </p>
+                    </div>
+
+                    <FormField
+                      control={form.control}
+                      name="contactEmail"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>邮箱 (Email)</FormLabel>
+                          <FormControl>
+                            <Input placeholder="your.email@example.com" {...field} />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                    
+                    <FormField
+                      control={form.control}
+                      name="contactTelegram"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>电报 (Telegram)</FormLabel>
+                          <FormControl>
+                            <Input placeholder="@your_telegram" {...field} />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                    
+                    <FormField
+                      control={form.control}
+                      name="contactDiscord"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Discord</FormLabel>
+                          <FormControl>
+                            <Input placeholder="your_discord#1234" {...field} />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                  </div>
+
                   <div className="flex gap-4 justify-between">
                     <Button type="button" variant="outline" onClick={() => setStep(1)} data-testid="button-back-step-2">
                       Back
@@ -394,23 +457,23 @@ export default function CreateProposal() {
 
                       <FormField
                         control={form.control}
-                        name="fundingAmount"
+                        name="fundingRequested"
                         render={({ field }) => (
                           <FormItem>
-                            <FormLabel>Funding Request (WAN)</FormLabel>
+                            <FormLabel>资金请求金额 (WAN)</FormLabel>
                             <FormControl>
                               <Input
                                 type="number"
                                 step="0.01"
                                 min="0"
-                                placeholder="Enter requested amount"
-                                data-testid="input-funding-amount"
+                                placeholder="输入请求的资金金额"
+                                data-testid="input-funding-requested"
                                 {...field}
                               />
                             </FormControl>
                             <FormDescription className="space-y-1">
-                              <span className="block">Base limit: {calculateMaxFunding().toLocaleString()} WAN (from your {stakeAmount} WAN stake × {stakeType === 'lock' ? lockMultiplier : burnMultiplier})</span>
-                              <span className="block text-xs">💡 Partner support allows you to request additional funding beyond your base stake limit</span>
+                              <span className="block">基础限额: {calculateMaxFunding().toLocaleString()} WAN (来自您的 {stakeAmount} WAN 质押 × {stakeType === 'lock' ? lockMultiplier : burnMultiplier})</span>
+                              <span className="block text-xs">💡 如果请求金额超过基础限额，Partner 可以追加资金支持您的提案</span>
                             </FormDescription>
                             <FormMessage />
                           </FormItem>

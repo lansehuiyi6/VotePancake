@@ -22,9 +22,13 @@ export const proposals = pgTable("proposals", {
   status: text("status").notNull().default("pending"),
   creatorId: varchar("creator_id").notNull().references(() => users.id),
   fundingAmount: decimal("funding_amount", { precision: 20, scale: 2 }),
+  fundingRequested: decimal("funding_requested", { precision: 20, scale: 2 }),
   stakeAmount: decimal("stake_amount", { precision: 20, scale: 2 }),
   stakeType: text("stake_type"),
   xpBurned: decimal("xp_burned", { precision: 20, scale: 2 }),
+  contactEmail: text("contact_email"),
+  contactTelegram: text("contact_telegram"),
+  contactDiscord: text("contact_discord"),
   votingStartsAt: timestamp("voting_starts_at"),
   votingEndsAt: timestamp("voting_ends_at"),
   votesFor: decimal("votes_for", { precision: 20, scale: 2 }).notNull().default("0"),
@@ -111,6 +115,7 @@ export const insertProposalSchema = createInsertSchema(proposals).omit({
   updatedAt: true,
   votesFor: true,
   votesAgainst: true,
+  fundingAmount: true,
 });
 
 export const insertVoteSchema = createInsertSchema(votes).omit({
