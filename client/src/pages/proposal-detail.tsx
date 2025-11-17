@@ -213,9 +213,20 @@ export default function ProposalDetail() {
   const isPartner = currentUser?.role === "partner" || currentUser?.role === "admin";
 
   const proposalClaims = userClaims?.filter(c => c.proposalId === id) || [];
-  const canClaimAsCreator = isCreator && proposal.stakeAmount && (proposal.status === "passed" || proposal.status === "failed");
-  const canClaimAsVoter = hasVoted && (proposal.status === "passed" || proposal.status === "failed");
-  const canClaimAsPartner = hasSupported && (proposal.status === "passed" || proposal.status === "failed");
+  
+  // 根据resolution字段判断是否可以claim
+  const hasResolution = proposal.resolution === "administrative_reject" || 
+                        proposal.resolution === "vote_passed" || 
+                        proposal.resolution === "vote_failed";
+  
+  // 管理员拒绝的提案可以立即claim（无需apply）- 提案者和partner都可以
+  const isAdminRejected = proposal.resolution === "administrative_reject";
+  // 投票失败或成功的提案需要先apply，等待3天后claim
+  const needsDelayedClaim = proposal.resolution === "vote_passed" || proposal.resolution === "vote_failed";
+  
+  const canClaimAsCreator = isCreator && proposal.stakeAmount && hasResolution;
+  const canClaimAsVoter = hasVoted && needsDelayedClaim; // 只有投票过的才能claim vote stake
+  const canClaimAsPartner = hasSupported && hasResolution; // 管理员拒绝或投票结束都可以claim
 
   const creatorClaim = proposalClaims.find(c => c.participationType === "creator");
   const voteClaim = proposalClaims.find(c => c.participationType === "vote");
@@ -270,11 +281,17 @@ export default function ProposalDetail() {
                     <Separator />
                     <div>
                       <h3 className="font-semibold mb-4">Funding Details</h3>
-                      <div className="grid sm:grid-cols-2 gap-4 mb-4">
+                      <div className="grid sm:grid-cols-3 gap-4 mb-4">
                         <div className="p-4 rounded-lg bg-card border border-card-border">
-                          <div className="text-sm text-muted-foreground mb-1">Funding Request</div>
+                          <div className="text-sm text-muted-foreground mb-1">Requested Amount</div>
                           <div className="text-2xl font-bold font-mono text-primary">
-                            {Number(proposal.fundingAmount).toLocaleString()} WAN
+                            {Number(proposal.fundingRequested || 0).toLocaleString()} WAN
+                          </div>
+                        </div>
+                        <div className="p-4 rounded-lg bg-card border border-card-border">
+                          <div className="text-sm text-muted-foreground mb-1">Current Funding</div>
+                          <div className="text-2xl font-bold font-mono text-success">
+                            {Number(proposal.fundingAmount || 0).toLocaleString()} WAN
                           </div>
                         </div>
                         <div className="p-4 rounded-lg bg-card border border-card-border">
@@ -282,8 +299,12 @@ export default function ProposalDetail() {
                           <div className="text-lg font-bold font-mono">
                             {Number(proposal.stakeAmount).toLocaleString()} WAN
                           </div>
-                          <div className="text-xs text-muted-foreground mt-1">
-                            {proposal.stakeType === "lock" ? "Locked" : "Burned"}
+                          <div className="text-xs text-muted-foreground mt-1 flex items-center gap-1">
+                            {proposal.stakeType === "lock" ? (
+                              <><Lock className="h-3 w-3" /> Locked</>
+                            ) : (
+                              <><Flame className="h-3 w-3" /> Burned</>
+                            )}
                           </div>
                         </div>
                       </div>
@@ -367,17 +388,32 @@ export default function ProposalDetail() {
                             <Users className="h-5 w-5" />
                             Partner Support ({partners.length})
                           </h3>
-                          <div className="space-y-2">
+                          <div className="space-y-3">
                             {partners.map((partner: any) => (
-                              <div key={partner.id} className="flex items-center justify-between p-3 rounded-lg bg-card border border-card-border">
-                                <div className="flex items-center gap-2">
-                                  <User className="h-4 w-4 text-muted-foreground" />
-                                  <span className="font-medium">{partner.partner?.username}</span>
+                              <div key={partner.id} className="p-4 rounded-lg bg-card border border-card-border">
+                                <div className="flex items-start justify-between mb-2">
+                                  <div className="flex items-center gap-2">
+                                    <User className="h-4 w-4 text-muted-foreground" />
+                                    <span className="font-medium">{partner.partner?.username}</span>
+                                  </div>
+                                  <div className="text-right">
+                                    <div className="font-mono font-semibold text-lg">{Number(partner.wanAmount).toLocaleString()} WAN</div>
+                                    <div className="text-xs text-muted-foreground flex items-center gap-1 justify-end">
+                                      {partner.actionType === "lock" ? (
+                                        <><Lock className="h-3 w-3" /> Lock</>
+                                      ) : (
+                                        <><Flame className="h-3 w-3" /> Burn</>
+                                      )}
+                                    </div>
+                                  </div>
                                 </div>
-                                <div className="text-right">
-                                  <div className="font-mono font-semibold">{Number(partner.wanAmount).toLocaleString()} WAN</div>
-                                  <div className="text-xs text-muted-foreground">{partner.actionType}</div>
-                                </div>
+                                {(partner.contactEmail || partner.contactTelegram || partner.contactDiscord) && (
+                                  <div className="mt-2 pt-2 border-t text-xs text-muted-foreground space-y-1">
+                                    {partner.contactEmail && <div>📧 {partner.contactEmail}</div>}
+                                    {partner.contactTelegram && <div>📱 {partner.contactTelegram}</div>}
+                                    {partner.contactDiscord && <div>💬 {partner.contactDiscord}</div>}
+                                  </div>
+                                )}
                               </div>
                             ))}
                           </div>
@@ -571,14 +607,28 @@ export default function ProposalDetail() {
                         )}
                       </div>
                       {!creatorClaim && (
-                        <Button
-                          onClick={() => applyClaimMutation.mutate("creator")}
-                          disabled={applyClaimMutation.isPending}
-                          size="sm"
-                          data-testid="button-apply-claim-creator"
-                        >
-                          Apply Claim
-                        </Button>
+                        <>
+                          {isAdminRejected ? (
+                            <Button
+                              onClick={() => executeClaimMutation.mutate("creator")}
+                              disabled={executeClaimMutation.isPending}
+                              size="sm"
+                              variant="default"
+                              data-testid="button-claim-now-creator"
+                            >
+                              {executeClaimMutation.isPending ? "Processing..." : "Claim Now"}
+                            </Button>
+                          ) : (
+                            <Button
+                              onClick={() => applyClaimMutation.mutate("creator")}
+                              disabled={applyClaimMutation.isPending}
+                              size="sm"
+                              data-testid="button-apply-claim-creator"
+                            >
+                              {applyClaimMutation.isPending ? "Processing..." : "Apply Claim"}
+                            </Button>
+                          )}
+                        </>
                       )}
                       {creatorClaim?.status === "applied" && (
                         <div className="space-y-2">
@@ -663,14 +713,28 @@ export default function ProposalDetail() {
                         )}
                       </div>
                       {!partnerClaim && (
-                        <Button
-                          onClick={() => applyClaimMutation.mutate("partner")}
-                          disabled={applyClaimMutation.isPending}
-                          size="sm"
-                          data-testid="button-apply-claim-partner"
-                        >
-                          Apply Claim
-                        </Button>
+                        <>
+                          {isAdminRejected ? (
+                            <Button
+                              onClick={() => executeClaimMutation.mutate("partner")}
+                              disabled={executeClaimMutation.isPending}
+                              size="sm"
+                              variant="default"
+                              data-testid="button-claim-now-partner"
+                            >
+                              {executeClaimMutation.isPending ? "Processing..." : "Claim Now"}
+                            </Button>
+                          ) : (
+                            <Button
+                              onClick={() => applyClaimMutation.mutate("partner")}
+                              disabled={applyClaimMutation.isPending}
+                              size="sm"
+                              data-testid="button-apply-claim-partner"
+                            >
+                              {applyClaimMutation.isPending ? "Processing..." : "Apply Claim"}
+                            </Button>
+                          )}
+                        </>
                       )}
                       {partnerClaim?.status === "applied" && (
                         <div className="space-y-2">
@@ -810,6 +874,56 @@ export default function ProposalDetail() {
                 </CardHeader>
                 <CardContent>
                   <VoteProgress votesFor={proposal.votesFor} votesAgainst={proposal.votesAgainst} />
+                </CardContent>
+              </Card>
+            )}
+
+            {votes && votes.length > 0 && (proposal.status === "active" || proposal.status === "passed" || proposal.status === "rejected") && (
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-lg">Voting Details ({votes.length})</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  {votes.map((vote: any) => (
+                    <div key={vote.id} className="p-3 rounded-lg bg-card border border-card-border">
+                      <div className="flex items-start justify-between mb-2">
+                        <div className="flex items-center gap-2">
+                          <User className="h-4 w-4 text-muted-foreground" />
+                          <span className="font-medium">{vote.voter?.username}</span>
+                          {vote.support ? (
+                            <Badge variant="outline" className="text-success border-success">
+                              <ThumbsUp className="h-3 w-3 mr-1" />
+                              For
+                            </Badge>
+                          ) : (
+                            <Badge variant="outline" className="text-destructive border-destructive">
+                              <ThumbsDown className="h-3 w-3 mr-1" />
+                              Against
+                            </Badge>
+                          )}
+                        </div>
+                      </div>
+                      <div className="grid grid-cols-2 gap-2 text-xs">
+                        <div>
+                          <span className="text-muted-foreground">Amount: </span>
+                          <span className="font-mono font-semibold">{Number(vote.wanAmount).toLocaleString()} WAN</span>
+                        </div>
+                        <div>
+                          <span className="text-muted-foreground">Lock Type: </span>
+                          <span className="font-medium">
+                            {vote.lockType === "until_end" && "Until End"}
+                            {vote.lockType === "6_months" && "6 Months"}
+                            {vote.lockType === "12_months" && "12 Months"}
+                            {vote.lockType === "burn" && "Burn"}
+                          </span>
+                        </div>
+                        <div className="col-span-2">
+                          <span className="text-muted-foreground">Voting Power: </span>
+                          <span className="font-mono font-bold text-primary">{Number(vote.votingPower).toLocaleString()}</span>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
                 </CardContent>
               </Card>
             )}

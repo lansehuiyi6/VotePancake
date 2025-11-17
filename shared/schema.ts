@@ -35,6 +35,10 @@ export const proposals = pgTable("proposals", {
   votingEndsAt: timestamp("voting_ends_at"),
   votesFor: decimal("votes_for", { precision: 20, scale: 2 }).notNull().default("0"),
   votesAgainst: decimal("votes_against", { precision: 20, scale: 2 }).notNull().default("0"),
+  resolution: text("resolution"),
+  rejectedBy: varchar("rejected_by").references(() => users.id),
+  rejectionReason: text("rejection_reason"),
+  resolvedAt: timestamp("resolved_at"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });

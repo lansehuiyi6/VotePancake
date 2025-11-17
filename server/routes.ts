@@ -675,8 +675,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ error: "Proposal not found" });
       }
 
-      if (proposal.status !== "passed" && proposal.status !== "failed") {
-        return res.status(400).json({ error: "只能对通过或失败的提案申请赎回" });
+      // 检查resolution字段
+      if (proposal.resolution === "administrative_reject") {
+        return res.status(400).json({ error: "管理员拒绝的提案可以直接赎回，无需申请" });
+      }
+
+      if (proposal.resolution !== "vote_passed" && proposal.resolution !== "vote_failed") {
+        return res.status(400).json({ error: "只能对投票结束的提案申请赎回" });
       }
 
       const existing = await storage.getClaim(req.params.id, req.user.id, data.participationType);
@@ -751,9 +756,56 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ error: "Proposal not found" });
       }
 
+      // 检查提案是否有有效的resolution
+      const hasValidResolution = proposal.resolution === "administrative_reject" || 
+                                  proposal.resolution === "vote_passed" || 
+                                  proposal.resolution === "vote_failed";
+      
+      if (!hasValidResolution) {
+        return res.status(400).json({ error: "提案尚未结束，无法赎回" });
+      }
+
+      // 管理员拒绝的提案可以直接赎回，不需要claim记录
+      if (proposal.resolution === "administrative_reject") {
+        // 验证用户权限
+        let claimableAmount = "0";
+        let canClaim = false;
+
+        if (data.participationType === "creator") {
+          if (proposal.creatorId !== req.user.id) {
+            return res.status(403).json({ error: "只有提案创建者才能赎回" });
+          }
+          if (proposal.stakeAmount) {
+            claimableAmount = proposal.stakeAmount;
+            canClaim = true;
+          }
+        } else if (data.participationType === "partner") {
+          const support = await storage.getPartnerSupport(req.params.id, req.user.id);
+          if (!support) {
+            return res.status(403).json({ error: "您没有为此提案提供Partner支持" });
+          }
+          if (support.wanAmount) {
+            claimableAmount = support.wanAmount;
+            canClaim = true;
+          }
+        } else {
+          return res.status(400).json({ error: "管理员拒绝的提案不支持投票者赎回（因为未进行投票）" });
+        }
+
+        if (!canClaim || Number(claimableAmount) === 0) {
+          return res.status(400).json({ error: "您没有可赎回的资金" });
+        }
+
+        // 直接返还资金
+        await storage.updateUserBalance(req.user.id, "0", claimableAmount);
+
+        return res.json({ success: true, claimedAmount: claimableAmount });
+      }
+
+      // 投票结束的提案需要先apply claim
       const claim = await storage.getClaim(req.params.id, req.user.id, data.participationType);
       if (!claim) {
-        return res.status(404).json({ error: "未找到赎回申请" });
+        return res.status(404).json({ error: "未找到赎回申请，请先申请赎回" });
       }
 
       if (claim.userId !== req.user.id) {
