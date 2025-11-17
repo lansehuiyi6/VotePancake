@@ -22,7 +22,17 @@ export default function Home() {
 
   const filteredProposals = proposals?.filter(p => {
     if (typeFilter !== "all" && p.type !== typeFilter) return false;
-    if (statusFilter !== "all" && p.status !== statusFilter) return false;
+    
+    // Handle status filter - "approved" should include both "approved" and "publicized" statuses
+    if (statusFilter !== "all") {
+      if (statusFilter === "approved") {
+        // "Soon" tab should show both approved and publicized proposals
+        if (p.status !== "approved" && p.status !== "publicized") return false;
+      } else if (p.status !== statusFilter) {
+        return false;
+      }
+    }
+    
     if (p.status === "pending" && p.creatorId !== currentUser?.id && currentUser?.role !== "admin") return false;
     return true;
   });
@@ -120,6 +130,7 @@ export default function Home() {
                 key={proposal.id}
                 proposal={proposal}
                 currentUserId={currentUser?.id}
+                currentUserRole={currentUser?.role}
               />
             ))}
           </div>

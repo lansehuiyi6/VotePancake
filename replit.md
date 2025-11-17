@@ -105,3 +105,38 @@ The project runs a full-stack server on port 5000 that serves both the API and t
   - GET /api/proposals 从 N+1 查询优化为仅 2 次数据库查询
   - 添加幂等性保护，避免并发请求重复更新状态
   - 未来可考虑：在 partner_supports 表添加 (proposal_id, partner_id) 复合索引
+
+## Recent Changes (Nov 17, 2025)
+### UI/UX 改进和功能完善
+
+- **提案卡片显示优化**:
+  - 修复 funding request 显示问题：现在正确显示 `fundingRequested` 字段（用户申请的资金金额）
+  - 添加详细资金信息显示：
+    - Creator Stake（创建者质押的 WAN 金额和类型）
+    - Partner Stakes（合作伙伴质押的总 WAN 金额）
+    - Total Locked/Burned（总锁定/销毁的 WAN 数量）
+    - Effective Funding（基于乘数计算的有效资金额度）
+
+- **Partner 重复支持功能**:
+  - 添加 `updatePartnerSupport` 方法到 storage 接口
+  - 允许 Partner 对同一提案多次追加资金支持
+  - 重复支持时累加金额而非返回错误
+  - 每次支持后自动检查是否达到资金要求，满足条件立即转为 active 状态
+
+- **资金条件检查机制**:
+  - Partner support 后立即检查资金条件（POST /api/proposals/:id/support）
+  - GET /api/proposals 中定期检查 publicized 状态的提案
+  - 到达 fundingDeadline 后：
+    - 资金达标 → 自动转为 active（投票）状态
+    - 资金不足 → 自动转为 closed 状态
+  - 提案只有满足资金条件才会进入投票阶段
+
+### 技术实现细节
+- 修改文件：
+  - `client/src/components/proposal-card.tsx`：更新显示逻辑和资金信息计算
+  - `server/routes.ts`：优化 partner support 流程，移除重复代码
+  - `server/storage.ts`：添加 updatePartnerSupport 方法支持更新已有支持记录
+
+### 已知限制
+- 前端资金计算目前假设所有 partner 的质押类型与创建者相同
+- 如需更精确的计算（区分不同 partner 的 lock/burn 类型），需要修改 API 返回更详细的数据

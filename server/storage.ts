@@ -43,6 +43,7 @@ export interface IStorage {
   getPartnerSupportsByPartner(partnerId: string): Promise<any[]>;
   getPartnerSupport(proposalId: string, partnerId: string): Promise<PartnerSupport | undefined>;
   createPartnerSupport(support: InsertPartnerSupport): Promise<PartnerSupport>;
+  updatePartnerSupport(id: string, data: Partial<InsertPartnerSupport>): Promise<void>;
   updatePartnerSupportProcessed(id: string, processed: boolean): Promise<void>;
 
   getSystemParams(): Promise<SystemParam[]>;
@@ -239,6 +240,10 @@ export class DatabaseStorage implements IStorage {
   async createPartnerSupport(support: InsertPartnerSupport): Promise<PartnerSupport> {
     const [created] = await db.insert(partnerSupports).values(support).returning();
     return created;
+  }
+
+  async updatePartnerSupport(id: string, data: Partial<InsertPartnerSupport>): Promise<void> {
+    await db.update(partnerSupports).set(data).where(eq(partnerSupports.id, id));
   }
 
   async updatePartnerSupportProcessed(id: string, processed: boolean): Promise<void> {

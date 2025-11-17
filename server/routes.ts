@@ -367,13 +367,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ error: "请至少填写一个联系方式（邮箱、Telegram 或 Discord）" });
       }
 
-      const existing = await storage.getPartnerSupport(req.params.id, req.user.id);
-      if (existing) {
-        return res.status(400).json({ error: "您已经支持过此提案" });
-      }
-
       if (Number(req.user.wanBalance) < Number(data.wanAmount)) {
         return res.status(400).json({ error: "WAN余额不足" });
+      }
+
+      const existing = await storage.getPartnerSupport(req.params.id, req.user.id);
+      let support;
+      
+      if (existing) {
+        // Update existing support instead of creating new one
+        const newAmount = (Number(existing.wanAmount) + Number(data.wanAmount)).toString();
+        await storage.updatePartnerSupport(existing.id, { wanAmount: newAmount });
+        support = { ...existing, wanAmount: newAmount };
+      } else {
+        support = await storage.createPartnerSupport(data);
       }
 
       const params = await storage.getSystemParams();
@@ -391,8 +398,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       await storage.updateUserBalance(req.user.id, "0", `-${data.wanAmount}`);
-
-      const support = await storage.createPartnerSupport(data);
 
       const allSupports = await storage.getPartnerSupports(req.params.id);
       const partnerFunding = allSupports.reduce((sum, ps) => {
