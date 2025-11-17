@@ -2,7 +2,7 @@ import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { z } from "zod";
-import { insertUserSchema, insertProposalSchema, insertVoteSchema, insertPartnerSupportSchema } from "@shared/schema";
+import { insertUserSchema, insertProposalSchema, insertVoteSchema, insertPartnerSupportSchema, applyClaimSchema, executeClaimSchema } from "@shared/schema";
 import bcrypt from "bcrypt";
 
 declare global {
@@ -645,6 +645,143 @@ export async function registerRoutes(app: Express): Promise<Server> {
       return res.json(availableProposals);
     } catch (error: any) {
       return res.status(500).json({ error: error.message });
+    }
+  });
+
+  app.get("/api/proposals/:id/claims", authMiddleware, async (req, res) => {
+    try {
+      const claims = await storage.getClaims(req.params.id);
+      return res.json(claims);
+    } catch (error: any) {
+      return res.status(500).json({ error: error.message });
+    }
+  });
+
+  app.get("/api/user/claims", authMiddleware, async (req, res) => {
+    try {
+      const claims = await storage.getClaimsByUser(req.user.id);
+      return res.json(claims);
+    } catch (error: any) {
+      return res.status(500).json({ error: error.message });
+    }
+  });
+
+  app.post("/api/proposals/:id/claim/apply", authMiddleware, async (req, res) => {
+    try {
+      const data = applyClaimSchema.parse(req.body);
+      
+      const proposal = await storage.getProposal(req.params.id);
+      if (!proposal) {
+        return res.status(404).json({ error: "Proposal not found" });
+      }
+
+      if (proposal.status !== "passed" && proposal.status !== "failed") {
+        return res.status(400).json({ error: "只能对通过或失败的提案申请赎回" });
+      }
+
+      const existing = await storage.getClaim(req.params.id, req.user.id, data.participationType);
+      if (existing) {
+        return res.status(400).json({ error: "已经申请过此赎回" });
+      }
+
+      let claimableAmount = "0";
+      let canApply = false;
+
+      if (data.participationType === "creator") {
+        if (proposal.creatorId !== req.user.id) {
+          return res.status(403).json({ error: "只有提案创建者才能申请创建者赎回" });
+        }
+        if (proposal.stakeAmount) {
+          claimableAmount = proposal.stakeAmount;
+          canApply = true;
+        }
+      } else if (data.participationType === "vote") {
+        const vote = await storage.getVoteByVoter(req.params.id, req.user.id);
+        if (!vote) {
+          return res.status(403).json({ error: "您没有对此提案进行投票" });
+        }
+        if (vote.wanAmount) {
+          claimableAmount = vote.wanAmount;
+          canApply = true;
+        }
+      } else if (data.participationType === "partner") {
+        const support = await storage.getPartnerSupport(req.params.id, req.user.id);
+        if (!support) {
+          return res.status(403).json({ error: "您没有为此提案提供Partner支持" });
+        }
+        if (support.wanAmount) {
+          claimableAmount = support.wanAmount;
+          canApply = true;
+        }
+      }
+
+      if (!canApply || Number(claimableAmount) === 0) {
+        return res.status(400).json({ error: "您没有可赎回的资金" });
+      }
+
+      const appliedAt = new Date();
+      const claimableAt = new Date(appliedAt);
+      claimableAt.setDate(claimableAt.getDate() + 3);
+
+      const claim = await storage.createClaim({
+        proposalId: req.params.id,
+        userId: req.user.id,
+        participationType: data.participationType,
+        claimableAmount,
+        status: "applied",
+        appliedAt,
+        claimableAt,
+      });
+
+      return res.json(claim);
+    } catch (error: any) {
+      if (error.name === "ZodError") {
+        return res.status(400).json({ error: "Invalid request data", details: error.errors });
+      }
+      return res.status(400).json({ error: error.message });
+    }
+  });
+
+  app.post("/api/proposals/:id/claim/execute", authMiddleware, async (req, res) => {
+    try {
+      const data = executeClaimSchema.parse(req.body);
+      
+      const proposal = await storage.getProposal(req.params.id);
+      if (!proposal) {
+        return res.status(404).json({ error: "Proposal not found" });
+      }
+
+      const claim = await storage.getClaim(req.params.id, req.user.id, data.participationType);
+      if (!claim) {
+        return res.status(404).json({ error: "未找到赎回申请" });
+      }
+
+      if (claim.userId !== req.user.id) {
+        return res.status(403).json({ error: "您不能执行他人的赎回" });
+      }
+
+      if (claim.status === "claimed") {
+        return res.status(400).json({ error: "已经赎回过了" });
+      }
+
+      if (claim.status === "applied") {
+        if (claim.claimableAt && new Date() < new Date(claim.claimableAt)) {
+          const waitTime = Math.ceil((new Date(claim.claimableAt).getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24));
+          return res.status(400).json({ error: `还需等待 ${waitTime} 天才能赎回` });
+        }
+      }
+
+      await storage.updateUserBalance(req.user.id, "0", claim.claimableAmount);
+
+      const claimedAt = new Date();
+      await storage.updateClaimStatus(claim.id, "claimed", undefined, undefined, claimedAt);
+
+      return res.json({ success: true, claimedAmount: claim.claimableAmount });
+    } catch (error: any) {
+      if (error.name === "ZodError") {
+        return res.status(400).json({ error: "Invalid request data", details: error.errors });
+      }
+      return res.status(400).json({ error: error.message });
     }
   });
 

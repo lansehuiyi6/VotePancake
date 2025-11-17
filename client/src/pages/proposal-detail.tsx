@@ -57,6 +57,11 @@ export default function ProposalDetail() {
     queryKey: [`/api/proposals/${id}/partners`],
   });
 
+  const { data: userClaims } = useQuery<any[]>({
+    queryKey: [`/api/user/claims`],
+    enabled: !!currentUser,
+  });
+
   const voteForm = useForm<VoteFormData>({
     resolver: zodResolver(voteSchema),
     defaultValues: {
@@ -108,6 +113,43 @@ export default function ProposalDetail() {
     onError: (error: any) => {
       toast({
         title: "Support failed",
+        description: error.message,
+        variant: "destructive",
+      });
+    },
+  });
+
+  const applyClaimMutation = useMutation({
+    mutationFn: (participationType: string) => apiRequest("POST", `/api/proposals/${id}/claim/apply`, { participationType }),
+    onSuccess: () => {
+      toast({
+        title: "Claim applied!",
+        description: "Your claim has been submitted. You can execute it after 3 days.",
+      });
+      queryClient.invalidateQueries({ queryKey: [`/api/user/claims`] });
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Claim application failed",
+        description: error.message,
+        variant: "destructive",
+      });
+    },
+  });
+
+  const executeClaimMutation = useMutation({
+    mutationFn: (participationType: string) => apiRequest("POST", `/api/proposals/${id}/claim/execute`, { participationType }),
+    onSuccess: (data: any) => {
+      toast({
+        title: "Claim executed!",
+        description: `Successfully claimed ${Number(data.claimedAmount).toLocaleString()} WAN`,
+      });
+      queryClient.invalidateQueries({ queryKey: [`/api/user/claims`] });
+      queryClient.invalidateQueries({ queryKey: [`/api/auth/me`] });
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Claim execution failed",
         description: error.message,
         variant: "destructive",
       });
@@ -169,6 +211,15 @@ export default function ProposalDetail() {
   const hasSupported = partners?.some(p => p.partnerId === currentUser?.id);
   const isCreator = currentUser?.id === proposal.creatorId;
   const isPartner = currentUser?.role === "partner" || currentUser?.role === "admin";
+
+  const proposalClaims = userClaims?.filter(c => c.proposalId === id) || [];
+  const canClaimAsCreator = isCreator && proposal.stakeAmount && (proposal.status === "passed" || proposal.status === "failed");
+  const canClaimAsVoter = hasVoted && (proposal.status === "passed" || proposal.status === "failed");
+  const canClaimAsPartner = hasSupported && (proposal.status === "passed" || proposal.status === "failed");
+
+  const creatorClaim = proposalClaims.find(c => c.participationType === "creator");
+  const voteClaim = proposalClaims.find(c => c.participationType === "vote");
+  const partnerClaim = proposalClaims.find(c => c.participationType === "partner");
 
   return (
     <div className="min-h-screen bg-background py-12 px-4">
@@ -495,6 +546,152 @@ export default function ProposalDetail() {
                         </div>
                       </form>
                     </Form>
+                  )}
+                </CardContent>
+              </Card>
+            )}
+
+            {(canClaimAsCreator || canClaimAsVoter || canClaimAsPartner) && (
+              <Card>
+                <CardHeader>
+                  <CardTitle>Claim Your Funds</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  {canClaimAsCreator && (
+                    <div className="p-4 rounded-lg border">
+                      <div className="flex items-center justify-between mb-3">
+                        <div>
+                          <h4 className="font-semibold">Creator Stake</h4>
+                          <p className="text-sm text-muted-foreground">
+                            {Number(proposal.stakeAmount).toLocaleString()} WAN
+                          </p>
+                        </div>
+                        {creatorClaim?.status === "claimed" && (
+                          <Badge variant="outline">Claimed</Badge>
+                        )}
+                      </div>
+                      {!creatorClaim && (
+                        <Button
+                          onClick={() => applyClaimMutation.mutate("creator")}
+                          disabled={applyClaimMutation.isPending}
+                          size="sm"
+                          data-testid="button-apply-claim-creator"
+                        >
+                          Apply Claim
+                        </Button>
+                      )}
+                      {creatorClaim?.status === "applied" && (
+                        <div className="space-y-2">
+                          <Alert>
+                            <AlertDescription className="text-sm">
+                              Claimable {creatorClaim.claimableAt && new Date(creatorClaim.claimableAt) > new Date() 
+                                ? `in ${Math.ceil((new Date(creatorClaim.claimableAt).getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24))} days`
+                                : 'now'}
+                            </AlertDescription>
+                          </Alert>
+                          <Button
+                            onClick={() => executeClaimMutation.mutate("creator")}
+                            disabled={executeClaimMutation.isPending || (creatorClaim.claimableAt && new Date(creatorClaim.claimableAt) > new Date())}
+                            size="sm"
+                            data-testid="button-execute-claim-creator"
+                          >
+                            {executeClaimMutation.isPending ? "Processing..." : "Execute Claim"}
+                          </Button>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {canClaimAsVoter && (
+                    <div className="p-4 rounded-lg border">
+                      <div className="flex items-center justify-between mb-3">
+                        <div>
+                          <h4 className="font-semibold">Vote Stake</h4>
+                          <p className="text-sm text-muted-foreground">
+                            {votes?.find(v => v.voterId === currentUser?.id)?.wanAmount && 
+                              Number(votes.find(v => v.voterId === currentUser?.id)!.wanAmount).toLocaleString()} WAN
+                          </p>
+                        </div>
+                        {voteClaim?.status === "claimed" && (
+                          <Badge variant="outline">Claimed</Badge>
+                        )}
+                      </div>
+                      {!voteClaim && (
+                        <Button
+                          onClick={() => applyClaimMutation.mutate("vote")}
+                          disabled={applyClaimMutation.isPending}
+                          size="sm"
+                          data-testid="button-apply-claim-vote"
+                        >
+                          Apply Claim
+                        </Button>
+                      )}
+                      {voteClaim?.status === "applied" && (
+                        <div className="space-y-2">
+                          <Alert>
+                            <AlertDescription className="text-sm">
+                              Claimable {voteClaim.claimableAt && new Date(voteClaim.claimableAt) > new Date() 
+                                ? `in ${Math.ceil((new Date(voteClaim.claimableAt).getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24))} days`
+                                : 'now'}
+                            </AlertDescription>
+                          </Alert>
+                          <Button
+                            onClick={() => executeClaimMutation.mutate("vote")}
+                            disabled={executeClaimMutation.isPending || (voteClaim.claimableAt && new Date(voteClaim.claimableAt) > new Date())}
+                            size="sm"
+                            data-testid="button-execute-claim-vote"
+                          >
+                            {executeClaimMutation.isPending ? "Processing..." : "Execute Claim"}
+                          </Button>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {canClaimAsPartner && (
+                    <div className="p-4 rounded-lg border">
+                      <div className="flex items-center justify-between mb-3">
+                        <div>
+                          <h4 className="font-semibold">Partner Support</h4>
+                          <p className="text-sm text-muted-foreground">
+                            {partners?.find(p => p.partnerId === currentUser?.id)?.wanAmount && 
+                              Number(partners.find(p => p.partnerId === currentUser?.id)!.wanAmount).toLocaleString()} WAN
+                          </p>
+                        </div>
+                        {partnerClaim?.status === "claimed" && (
+                          <Badge variant="outline">Claimed</Badge>
+                        )}
+                      </div>
+                      {!partnerClaim && (
+                        <Button
+                          onClick={() => applyClaimMutation.mutate("partner")}
+                          disabled={applyClaimMutation.isPending}
+                          size="sm"
+                          data-testid="button-apply-claim-partner"
+                        >
+                          Apply Claim
+                        </Button>
+                      )}
+                      {partnerClaim?.status === "applied" && (
+                        <div className="space-y-2">
+                          <Alert>
+                            <AlertDescription className="text-sm">
+                              Claimable {partnerClaim.claimableAt && new Date(partnerClaim.claimableAt) > new Date() 
+                                ? `in ${Math.ceil((new Date(partnerClaim.claimableAt).getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24))} days`
+                                : 'now'}
+                            </AlertDescription>
+                          </Alert>
+                          <Button
+                            onClick={() => executeClaimMutation.mutate("partner")}
+                            disabled={executeClaimMutation.isPending || (partnerClaim.claimableAt && new Date(partnerClaim.claimableAt) > new Date())}
+                            size="sm"
+                            data-testid="button-execute-claim-partner"
+                          >
+                            {executeClaimMutation.isPending ? "Processing..." : "Execute Claim"}
+                          </Button>
+                        </div>
+                      )}
+                    </div>
                   )}
                 </CardContent>
               </Card>

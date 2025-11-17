@@ -72,6 +72,19 @@ export const systemParams = pgTable("system_params", {
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });
 
+export const claims = pgTable("claims", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  proposalId: varchar("proposal_id").notNull().references(() => proposals.id),
+  userId: varchar("user_id").notNull().references(() => users.id),
+  participationType: text("participation_type").notNull(),
+  claimableAmount: decimal("claimable_amount", { precision: 20, scale: 2 }).notNull(),
+  status: text("status").notNull().default("pending"),
+  appliedAt: timestamp("applied_at"),
+  claimableAt: timestamp("claimable_at"),
+  claimedAt: timestamp("claimed_at"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
 export const usersRelations = relations(users, ({ many }) => ({
   proposals: many(proposals),
   votes: many(votes),
@@ -109,6 +122,17 @@ export const partnerSupportsRelations = relations(partnerSupports, ({ one }) => 
   }),
 }));
 
+export const claimsRelations = relations(claims, ({ one }) => ({
+  proposal: one(proposals, {
+    fields: [claims.proposalId],
+    references: [proposals.id],
+  }),
+  user: one(users, {
+    fields: [claims.userId],
+    references: [users.id],
+  }),
+}));
+
 export const insertUserSchema = createInsertSchema(users).omit({
   id: true,
   createdAt: true,
@@ -140,6 +164,19 @@ export const insertSystemParamSchema = createInsertSchema(systemParams).omit({
   updatedAt: true,
 });
 
+export const insertClaimSchema = createInsertSchema(claims).omit({
+  id: true,
+  createdAt: true,
+});
+
+export const applyClaimSchema = z.object({
+  participationType: z.enum(["creator", "vote", "partner"]),
+});
+
+export const executeClaimSchema = z.object({
+  participationType: z.enum(["creator", "vote", "partner"]),
+});
+
 export type InsertUser = z.infer<typeof insertUserSchema>;
 export type User = typeof users.$inferSelect;
 export type InsertProposal = z.infer<typeof insertProposalSchema>;
@@ -150,3 +187,5 @@ export type InsertPartnerSupport = z.infer<typeof insertPartnerSupportSchema>;
 export type PartnerSupport = typeof partnerSupports.$inferSelect;
 export type InsertSystemParam = z.infer<typeof insertSystemParamSchema>;
 export type SystemParam = typeof systemParams.$inferSelect;
+export type InsertClaim = z.infer<typeof insertClaimSchema>;
+export type Claim = typeof claims.$inferSelect;

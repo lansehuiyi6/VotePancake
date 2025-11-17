@@ -4,6 +4,7 @@ import {
   votes,
   partnerSupports,
   systemParams,
+  claims,
   type User,
   type InsertUser,
   type Proposal,
@@ -14,6 +15,8 @@ import {
   type InsertPartnerSupport,
   type SystemParam,
   type InsertSystemParam,
+  type Claim,
+  type InsertClaim,
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, and, desc, inArray } from "drizzle-orm";
@@ -49,6 +52,12 @@ export interface IStorage {
   getSystemParams(): Promise<SystemParam[]>;
   getSystemParam(key: string): Promise<SystemParam | undefined>;
   upsertSystemParam(param: InsertSystemParam): Promise<SystemParam>;
+
+  getClaims(proposalId: string): Promise<any[]>;
+  getClaimsByUser(userId: string): Promise<any[]>;
+  getClaim(proposalId: string, userId: string, participationType: string): Promise<Claim | undefined>;
+  createClaim(claim: InsertClaim): Promise<Claim>;
+  updateClaimStatus(id: string, status: string, appliedAt?: Date, claimableAt?: Date, claimedAt?: Date): Promise<void>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -273,6 +282,64 @@ export class DatabaseStorage implements IStorage {
       const [created] = await db.insert(systemParams).values(param).returning();
       return created;
     }
+  }
+
+  async getClaims(proposalId: string): Promise<any[]> {
+    return await db.query.claims.findMany({
+      where: eq(claims.proposalId, proposalId),
+      with: {
+        user: { columns: { username: true } },
+      },
+      orderBy: [desc(claims.createdAt)],
+    });
+  }
+
+  async getClaimsByUser(userId: string): Promise<any[]> {
+    return await db.query.claims.findMany({
+      where: eq(claims.userId, userId),
+      with: {
+        proposal: {
+          with: {
+            creator: { columns: { username: true } },
+          },
+        },
+      },
+      orderBy: [desc(claims.createdAt)],
+    });
+  }
+
+  async getClaim(proposalId: string, userId: string, participationType: string): Promise<Claim | undefined> {
+    const [claim] = await db
+      .select()
+      .from(claims)
+      .where(
+        and(
+          eq(claims.proposalId, proposalId),
+          eq(claims.userId, userId),
+          eq(claims.participationType, participationType)
+        )
+      );
+    return claim || undefined;
+  }
+
+  async createClaim(claim: InsertClaim): Promise<Claim> {
+    const [created] = await db.insert(claims).values(claim).returning();
+    return created;
+  }
+
+  async updateClaimStatus(
+    id: string,
+    status: string,
+    appliedAt?: Date,
+    claimableAt?: Date,
+    claimedAt?: Date
+  ): Promise<void> {
+    const updateData: any = { status };
+    if (appliedAt) updateData.appliedAt = appliedAt;
+    if (claimableAt) updateData.claimableAt = claimableAt;
+    if (claimedAt) updateData.claimedAt = claimedAt;
+    
+    await db.update(claims).set(updateData).where(eq(claims.id, id));
   }
 }
 
