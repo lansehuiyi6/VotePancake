@@ -5,14 +5,14 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
 import { StatusBadge } from "@/components/ui/status-badge";
-import { User } from "@/lib/types";
+import { User as UserType } from "../lib/types";
 import { useToast } from "@/components/ui/use-toast";
 import { useEffect } from "react";
 import { RefreshCw } from "lucide-react";
 import { Coins, TrendingUp, FileText, DollarSign, Users, Heart, Plus } from "lucide-react";
 import { Link } from "wouter";
 
-interface User {
+type User = UserType & {
   id: string;
   username: string;
   role: string;
