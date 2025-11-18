@@ -125,11 +125,9 @@ export function Header({ currentUser }: HeaderProps) {
                       <DropdownMenuItem data-testid="link-admin">Admin Panel</DropdownMenuItem>
                     </Link>
                   )}
-                  {(currentUser.role === "partner" || currentUser.role === "admin") && (
-                    <Link href="/partner">
-                      <DropdownMenuItem data-testid="link-partner">Partner Dashboard</DropdownMenuItem>
-                    </Link>
-                  )}
+                  <Link href="/partner">
+                    <DropdownMenuItem data-testid="link-partner">Partner Dashboard</DropdownMenuItem>
+                  </Link>
                   <Link href="/my-proposals">
                     <DropdownMenuItem data-testid="link-my-proposals">My Proposals</DropdownMenuItem>
                   </Link>

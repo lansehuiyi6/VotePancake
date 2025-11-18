@@ -21,6 +21,8 @@ import {
 import { db } from "./db";
 import { eq, and, desc, inArray } from "drizzle-orm";
 
+// PartnerSupport and InsertPartnerSupport types are imported from @shared/schema
+
 export interface IStorage {
   getUser(id: string): Promise<User | undefined>;
   getUserByUsername(username: string): Promise<User | undefined>;
@@ -192,71 +194,125 @@ export class DatabaseStorage implements IStorage {
     await db.update(votes).set({ processed }).where(eq(votes.id, id));
   }
 
-  async getPartnerSupports(proposalId: string): Promise<any[]> {
-    return await db.query.partnerSupports.findMany({
-      where: eq(partnerSupports.proposalId, proposalId),
-      with: {
-        partner: { columns: { username: true } },
-      },
-    });
+  async getPartnerSupports(proposalId: string): Promise<PartnerSupport[]> {
+    try {
+      return await db
+        .select()
+        .from(partnerSupports)
+        .where(eq(partnerSupports.proposalId, proposalId));
+    } catch (error) {
+      console.error(`[ERROR] Error fetching partner supports for proposal ${proposalId}:`, error);
+      throw error;
+    }
   }
 
-  async getPartnerSupportsForProposals(proposalIds: string[]): Promise<Map<string, any[]>> {
+  async getPartnerSupportsByPartner(partnerId: string): Promise<PartnerSupport[]> {
+    try {
+      return await db
+        .select()
+        .from(partnerSupports)
+        .where(eq(partnerSupports.partnerId, partnerId));
+    } catch (error) {
+      console.error(`[ERROR] Error fetching partner supports for partner ${partnerId}:`, error);
+      throw error;
+    }
+  }
+
+  async getPartnerSupportsForProposals(proposalIds: string[]): Promise<Map<string, PartnerSupport[]>> {
+    const result = new Map<string, PartnerSupport[]>();
+    
     if (proposalIds.length === 0) {
-      return new Map();
+      return result;
     }
-
-    const supports = await db.query.partnerSupports.findMany({
-      where: inArray(partnerSupports.proposalId, proposalIds),
-      with: {
-        partner: { columns: { username: true } },
-      },
-    });
-
-    const grouped = new Map<string, any[]>();
-    for (const support of supports) {
-      if (!grouped.has(support.proposalId)) {
-        grouped.set(support.proposalId, []);
+    
+    console.log(`[DEBUG] Querying partner supports for proposals:`, proposalIds);
+    
+    try {
+      // Fetch all partner supports for the given proposal IDs
+      const supports = await db
+        .select()
+        .from(partnerSupports)
+        .where(inArray(partnerSupports.proposalId, proposalIds));
+      
+      // Group supports by proposalId
+      for (const support of supports) {
+        if (!result.has(support.proposalId)) {
+          result.set(support.proposalId, []);
+        }
+        result.get(support.proposalId)?.push(support);
       }
-      grouped.get(support.proposalId)!.push(support);
+      
+      return result;
+    } catch (error) {
+      console.error('[ERROR] Error in getPartnerSupportsForProposals:', error);
+      throw error;
     }
-
-    return grouped;
-  }
-
-  async getPartnerSupportsByPartner(partnerId: string): Promise<any[]> {
-    return await db.query.partnerSupports.findMany({
-      where: eq(partnerSupports.partnerId, partnerId),
-      with: {
-        proposal: {
-          with: {
-            creator: { columns: { username: true } },
-          },
-        },
-      },
-      orderBy: [desc(partnerSupports.createdAt)],
-    });
   }
 
   async getPartnerSupport(proposalId: string, partnerId: string): Promise<PartnerSupport | undefined> {
-    const [support] = await db
-      .select()
-      .from(partnerSupports)
-      .where(and(eq(partnerSupports.proposalId, proposalId), eq(partnerSupports.partnerId, partnerId)));
-    return support || undefined;
+    try {
+      const [support] = await db
+        .select()
+        .from(partnerSupports)
+        .where(
+          and(
+            eq(partnerSupports.proposalId, proposalId),
+            eq(partnerSupports.partnerId, partnerId)
+          )
+        )
+        .limit(1);
+      
+      return support || undefined;
+    } catch (error) {
+      console.error(`[ERROR] Error getting partner support for proposal ${proposalId} and partner ${partnerId}:`, error);
+      throw error;
+    }
   }
 
   async createPartnerSupport(support: InsertPartnerSupport): Promise<PartnerSupport> {
-    const [created] = await db.insert(partnerSupports).values(support).returning();
-    return created;
+    try {
+      const [created] = await db
+        .insert(partnerSupports)
+        .values({
+          ...support,
+          processed: false,
+          createdAt: new Date()
+        })
+        .returning();
+      
+      if (!created) {
+        throw new Error('Failed to create partner support');
+      }
+      
+      return created;
+    } catch (error) {
+      console.error('[ERROR] Error creating partner support:', error);
+      throw error;
+    }
   }
 
   async updatePartnerSupport(id: string, data: Partial<InsertPartnerSupport>): Promise<void> {
-    await db.update(partnerSupports).set(data).where(eq(partnerSupports.id, id));
+    try {
+      await db
+        .update(partnerSupports)
+        .set(data)
+        .where(eq(partnerSupports.id, id));
+    } catch (error) {
+      console.error(`[ERROR] Error updating partner support ${id}:`, error);
+      throw error;
+    }
   }
 
   async updatePartnerSupportProcessed(id: string, processed: boolean): Promise<void> {
-    await db.update(partnerSupports).set({ processed }).where(eq(partnerSupports.id, id));
+    try {
+      await db
+        .update(partnerSupports)
+        .set({ processed })
+        .where(eq(partnerSupports.id, id));
+    } catch (error) {
+      console.error(`[ERROR] Error updating partner support ${id} processed status:`, error);
+      throw error;
+    }
   }
 
   async getSystemParams(): Promise<SystemParam[]> {
