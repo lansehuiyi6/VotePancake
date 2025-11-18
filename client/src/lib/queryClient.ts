@@ -7,17 +7,32 @@ async function throwIfResNotOk(res: Response) {
   }
 }
 
+const getBaseUrl = () => {
+  // In production, use the same origin as the frontend
+  if (process.env.NODE_ENV === 'production') {
+    return ''; // relative to current host
+  }
+  // In development, use the local server
+  return 'http://localhost:3000';
+};
+
 export async function apiRequest(
   method: string,
   url: string,
   data?: unknown | undefined,
 ): Promise<Response> {
-  const headers: HeadersInit = {
-    'Accept': 'application/json',
-    ...(data && { 'Content-Type': 'application/json' })
+  const baseUrl = getBaseUrl();
+  const fullUrl = url.startsWith('http') ? url : `${baseUrl}${url}`;
+  
+  const headers: Record<string, string> = {
+    'Accept': 'application/json'
   };
+  
+  if (data) {
+    headers['Content-Type'] = 'application/json';
+  }
 
-  const res = await fetch(url, {
+  const res = await fetch(fullUrl, {
     method,
     headers,
     body: data ? JSON.stringify(data) : undefined,
