@@ -59,20 +59,19 @@ export default defineConfig(async () => {
       chunkSizeWarningLimit: 1000, // Increase chunk size warning limit
       rollupOptions: {
         output: {
-          manualChunks: (id: string) => {
-            if (id.includes('node_modules')) {
-              if (id.includes('react-router-dom') || id.includes('@remix-run')) {
-                return 'router';
-              }
-              if (id.includes('@radix-ui')) {
-                return 'ui';
-              }
-              if (id.includes('recharts') || id.includes('d3') || id.includes('victory')) {
-                return 'charts';
-              }
-              return 'vendor';
-            }
-          }
+          manualChunks: {
+            // Split vendor libraries into separate chunks
+            vendor: ['react', 'react-dom', 'react-router-dom'],
+            // Split UI components
+            ui: [
+              '@radix-ui/react-dialog',
+              '@radix-ui/react-dropdown-menu',
+              '@radix-ui/react-tabs',
+              '@radix-ui/react-toast',
+            ],
+            // Split charting libraries if used
+            charts: ['recharts', 'd3', 'victory'],
+          },
         },
       },
     },
