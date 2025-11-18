@@ -13,12 +13,9 @@ export async function apiRequest(
   data?: unknown | undefined,
 ): Promise<Response> {
   const headers: HeadersInit = {
-    'Accept': 'application/json'
+    'Accept': 'application/json',
+    ...(data && { 'Content-Type': 'application/json' })
   };
-  
-  if (data) {
-    headers['Content-Type'] = 'application/json';
-  }
 
   const res = await fetch(url, {
     method,

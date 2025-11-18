@@ -14,8 +14,8 @@ export default defineConfig(async () => {
   
   if (process.env.NODE_ENV !== "production" && process.env.REPL_ID) {
     try {
-      const cartographer = (await import("@replit/vite-plugin-cartographer")).default || (await import("@replit/vite-plugin-cartographer"));
-      const devBanner = (await import("@replit/vite-plugin-dev-banner")).default || (await import("@replit/vite-plugin-dev-banner"));
+      const { default: cartographer } = await import("@replit/vite-plugin-cartographer");
+      const { default: devBanner } = await import("@replit/vite-plugin-dev-banner");
       replitPlugins.push(cartographer(), devBanner());
     } catch (error) {
       console.warn('Failed to load Replit plugins:', error);
