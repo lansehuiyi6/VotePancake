@@ -4,6 +4,7 @@ import { pool } from "./db";
 import connectPgSimple from "connect-pg-simple";
 import { registerRoutes } from "./routes";
 import { setupVite, serveStatic, log } from "./vite";
+import { env } from './env';
 
 const app = express();
 const PgStore = connectPgSimple(session);
@@ -14,7 +15,8 @@ app.use(
       pool,
       createTableIfMissing: true,
     }),
-    secret: process.env.SESSION_SECRET || "votepancake-secret-key-change-in-production",
+    // secret: process.env.SESSION_SECRET || "votepancake-secret-key-change-in-production",
+    secret: env.SESSION_SECRET,
     resave: false,
     saveUninitialized: false,
     cookie: {
@@ -88,15 +90,24 @@ app.use((req, res, next) => {
   }
 
   // ALWAYS serve the app on the port specified in the environment variable PORT
-  // Other ports are firewalled. Default to 5000 if not specified.
-  // this serves both the API and the client.
-  // It is the only port that is not firewalled.
-  const port = parseInt(process.env.PORT || '5000', 10);
-  server.listen({
-    port,
-    host: "0.0.0.0",
-    reusePort: true,
-  }, () => {
-    log(`serving on port ${port}`);
+
+  // // Other ports are firewalled. Default to 5000 if not specified.
+  // // this serves both the API and the client.
+  // // It is the only port that is not firewalled.
+  // const port = parseInt(process.env.PORT || '5000', 10);
+  // server.listen({
+  //   port,
+  //   host: "0.0.0.0",
+  //   reusePort: true,
+  // }, () => {
+  //   log(`serving on port ${port}`);
+  // });
+    
+  // Default to 3000 if not specified.
+  const port = parseInt(process.env.PORT || '3000', 10);
+  
+  // Remove the host and reusePort options to avoid ENOTSUP error
+  server.listen(port, () => {
+    log(`Server is running on http://localhost:${port}`);
   });
 })();

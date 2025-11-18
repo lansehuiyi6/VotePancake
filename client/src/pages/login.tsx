@@ -7,7 +7,7 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
-import { useMutation } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { Coins } from "lucide-react";
 
@@ -30,9 +30,14 @@ export default function Login() {
     },
   });
 
+  const queryClient = useQueryClient();
+
   const loginMutation = useMutation({
     mutationFn: (data: LoginFormData) => apiRequest("POST", "/api/auth/login", data),
-    onSuccess: () => {
+    onSuccess: async () => {
+      // Invalidate and refetch the current user query
+      await queryClient.invalidateQueries({ queryKey: ["/api/auth/me"] });
+      
       toast({
         title: "Welcome back!",
         description: "You have successfully logged in.",

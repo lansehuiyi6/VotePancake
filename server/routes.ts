@@ -578,10 +578,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.get("/api/partner/supports", authMiddleware, async (req, res) => {
     try {
-      if (req.user.role !== "partner" && req.user.role !== "admin") {
-        return res.status(403).json({ error: "Partner role required" });
-      }
-
       const supports = await storage.getPartnerSupportsByPartner(req.user.id);
       return res.json(supports);
     } catch (error: any) {
@@ -591,10 +587,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.get("/api/partner/available-proposals", authMiddleware, async (req, res) => {
     try {
-      if (req.user.role !== "partner" && req.user.role !== "admin") {
-        return res.status(403).json({ error: "Partner role required" });
-      }
-
       const allProposals = await storage.getProposals();
       
       const availableProposals = await Promise.all(
